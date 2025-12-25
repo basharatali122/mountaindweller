@@ -147,6 +147,23 @@ const AdminDeposits = () => {
         if (txError) throw txError;
       }
 
+      // Send email notification
+      try {
+        await supabase.functions.invoke("send-deposit-notification", {
+          body: {
+            userEmail: selectedDeposit.user_email,
+            userName: selectedDeposit.user_name,
+            amount: selectedDeposit.amount,
+            status: approved ? "approved" : "rejected",
+            adminNotes: adminNotes || undefined,
+          },
+        });
+        console.log("Email notification sent");
+      } catch (emailError) {
+        console.error("Failed to send email notification:", emailError);
+        // Don't fail the whole operation if email fails
+      }
+
       toast({
         title: approved ? "Deposit Approved" : "Deposit Rejected",
         description: approved
