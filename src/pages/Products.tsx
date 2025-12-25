@@ -1,13 +1,21 @@
 import { Layout } from "@/components/layout/Layout";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ShoppingBag, ArrowRight, Leaf, Shield, Sparkles, Droplets, Sun } from "lucide-react";
+import { ShoppingBag, ArrowRight, Leaf, Shield, Sparkles, Droplets, Sun, Heart } from "lucide-react";
+
+import shampooImg from "@/assets/products/shampoo.png";
+import sunblockImg from "@/assets/products/sunblock.png";
+import facewashImg from "@/assets/products/facewash.png";
+import vitaminCSerumImg from "@/assets/products/vitamin-c-serum.png";
+import nevolisImg from "@/assets/products/nevolis-cream.png";
+import tuttiFruttiFacialImg from "@/assets/products/tutti-frutti-facial.png";
+import alpineGlowImg from "@/assets/products/alpine-glow.png";
 
 const products = [
   {
     name: "MD Shampoo",
     price: "3,000",
-    image: "🧴",
+    image: shampooImg,
     icon: Leaf,
     features: ["Anti-Hair Fall", "Herbal Formula", "Strengthens Roots"],
     description: "Premium herbal shampoo formulated to reduce hair fall and strengthen hair from root to tip.",
@@ -15,7 +23,7 @@ const products = [
   {
     name: "Sun Block SPF50",
     price: "2,000",
-    image: "☀️",
+    image: sunblockImg,
     icon: Sun,
     features: ["UV Protection", "Brightens Skin", "Non-Greasy"],
     description: "Advanced sun protection with SPF50 that shields and brightens your skin naturally.",
@@ -23,7 +31,7 @@ const products = [
   {
     name: "Face Wash",
     price: "TBD",
-    image: "💧",
+    image: facewashImg,
     icon: Droplets,
     features: ["Deep Cleansing", "Hydrating", "All Skin Types"],
     description: "Gentle yet effective face wash suitable for all skin types, leaving your skin fresh and hydrated.",
@@ -31,7 +39,7 @@ const products = [
   {
     name: "Serum Vitamin C",
     price: "4,000",
-    image: "✨",
+    image: vitaminCSerumImg,
     icon: Sparkles,
     features: ["Brightening", "Anti-Aging", "Cruelty-Free"],
     description: "Powerful Vitamin C serum that brightens skin tone and fights signs of aging naturally.",
@@ -39,10 +47,26 @@ const products = [
   {
     name: "Cream Nevolis",
     price: "2,000",
-    image: "🧴",
+    image: nevolisImg,
     icon: Shield,
     features: ["Deep Moisturizing", "Visible Results", "Premium Formula"],
-    description: "Luxurious cream that provides deep moisturization with visible results from first use.",
+    description: "Luxurious whitening cream that provides glow boost with visible results from first use.",
+  },
+  {
+    name: "Tutti Frutti Urgent Facial",
+    price: "2,500",
+    image: tuttiFruttiFacialImg,
+    icon: Sparkles,
+    features: ["Radiance Boost", "Instant Glow", "Premium Quality"],
+    description: "Luxurious facial treatment that delivers radiance you can see, for an instant glow.",
+  },
+  {
+    name: "Pure Alpine Glow",
+    price: "3,500",
+    image: alpineGlowImg,
+    icon: Heart,
+    features: ["Hydra Repair", "Moisture Cream", "Deep Nourishment"],
+    description: "Premium moisture cream that repairs and hydrates skin for a natural alpine glow.",
   },
 ];
 
@@ -87,10 +111,12 @@ const Products = () => {
                 className="group bg-card rounded-3xl border border-border overflow-hidden hover:border-primary/30 hover:shadow-elegant transition-all duration-300"
               >
                 {/* Product Image Area */}
-                <div className="aspect-square bg-secondary/50 flex items-center justify-center relative overflow-hidden">
-                  <div className="text-8xl transform group-hover:scale-110 transition-transform duration-500">
-                    {product.image}
-                  </div>
+                <div className="aspect-square bg-secondary/30 flex items-center justify-center relative overflow-hidden">
+                  <img 
+                    src={product.image} 
+                    alt={product.name}
+                    className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500"
+                  />
                   <div className="absolute top-4 right-4">
                     <div className="w-12 h-12 rounded-full bg-card/90 backdrop-blur-sm flex items-center justify-center shadow-elegant">
                       <product.icon className="w-6 h-6 text-primary" />
