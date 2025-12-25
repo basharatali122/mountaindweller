@@ -1,8 +1,10 @@
-import { useState } from "react";
-import { Link, useLocation } from "react-router-dom";
-import { Menu, X, Mountain } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Menu, X, Mountain, User, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
+import type { User as SupabaseUser } from "@supabase/supabase-js";
 
 const navLinks = [
   { href: "/", label: "Home" },
@@ -15,7 +17,26 @@ const navLinks = [
 
 export function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
+  const [user, setUser] = useState<SupabaseUser | null>(null);
   const location = useLocation();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    navigate("/");
+  };
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-card/80 backdrop-blur-lg border-b border-border">
@@ -30,7 +51,7 @@ export function Navbar() {
               <span className="font-display text-lg font-bold text-foreground leading-tight">
                 Mountain Dweller
               </span>
-              <span className="text-xs text-muted-foreground tracking-wider">
+              <span className="text-xs text-muted-foreground tracking-wider hidden sm:block">
                 BUSINESS • MARKETING • FREEDOM
               </span>
             </div>
@@ -54,13 +75,37 @@ export function Navbar() {
             ))}
           </nav>
 
-          {/* CTA Button */}
+          {/* CTA Buttons */}
           <div className="hidden lg:flex items-center gap-3">
-            <Link to="/contact">
-              <Button className="bg-accent text-accent-foreground hover:bg-accent/90 shadow-gold font-semibold">
-                Join the Journey
-              </Button>
-            </Link>
+            {user ? (
+              <>
+                <Link to="/dashboard">
+                  <Button variant="outline" className="gap-2">
+                    <User className="w-4 h-4" />
+                    Dashboard
+                  </Button>
+                </Link>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleLogout}
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  <LogOut className="w-5 h-5" />
+                </Button>
+              </>
+            ) : (
+              <>
+                <Link to="/auth">
+                  <Button variant="outline">Login</Button>
+                </Link>
+                <Link to="/auth">
+                  <Button className="bg-accent text-accent-foreground hover:bg-accent/90 shadow-gold font-semibold">
+                    Join Now
+                  </Button>
+                </Link>
+              </>
+            )}
           </div>
 
           {/* Mobile Menu Button */}
@@ -92,11 +137,41 @@ export function Navbar() {
                 {link.label}
               </Link>
             ))}
-            <Link to="/contact" onClick={() => setIsOpen(false)}>
-              <Button className="w-full mt-2 bg-accent text-accent-foreground hover:bg-accent/90 shadow-gold font-semibold">
-                Join the Journey
-              </Button>
-            </Link>
+            
+            {user ? (
+              <>
+                <Link to="/dashboard" onClick={() => setIsOpen(false)}>
+                  <Button variant="outline" className="w-full mt-2 gap-2">
+                    <User className="w-4 h-4" />
+                    Dashboard
+                  </Button>
+                </Link>
+                <Button
+                  variant="ghost"
+                  className="w-full mt-2"
+                  onClick={() => {
+                    handleLogout();
+                    setIsOpen(false);
+                  }}
+                >
+                  <LogOut className="mr-2 w-4 h-4" />
+                  Logout
+                </Button>
+              </>
+            ) : (
+              <>
+                <Link to="/auth" onClick={() => setIsOpen(false)}>
+                  <Button variant="outline" className="w-full mt-2">
+                    Login
+                  </Button>
+                </Link>
+                <Link to="/auth" onClick={() => setIsOpen(false)}>
+                  <Button className="w-full mt-2 bg-accent text-accent-foreground hover:bg-accent/90 shadow-gold font-semibold">
+                    Join Now
+                  </Button>
+                </Link>
+              </>
+            )}
           </nav>
         </div>
       )}
