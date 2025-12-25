@@ -9,6 +9,7 @@ import { TransactionHistory } from "@/components/dashboard/TransactionHistory";
 import { RankProgress } from "@/components/dashboard/RankProgress";
 import { EditProfileDialog } from "@/components/dashboard/EditProfileDialog";
 import { WithdrawalRequestDialog } from "@/components/dashboard/WithdrawalRequestDialog";
+import { ReferralEarnings } from "@/components/dashboard/ReferralEarnings";
 import { 
   Wallet, 
   Users, 
@@ -381,6 +382,9 @@ const Dashboard = () => {
                   )}
                 </div>
               </div>
+
+              {/* Referral Earnings */}
+              <ReferralEarnings userId={user?.id || ""} />
 
               {/* Rank Progress */}
               <RankProgress 
