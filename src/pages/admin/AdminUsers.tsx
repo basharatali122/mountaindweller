@@ -13,7 +13,8 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Search, Shield, ShieldOff } from "lucide-react";
+import { Search, Shield, ShieldOff, Wallet } from "lucide-react";
+import { DepositFundsDialog } from "@/components/admin/DepositFundsDialog";
 
 interface User {
   id: string;
@@ -26,6 +27,7 @@ interface User {
   team_count: number;
   created_at: string;
   isAdmin?: boolean;
+  walletBalance?: number;
 }
 
 const AdminUsers = () => {
@@ -33,6 +35,8 @@ const AdminUsers = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [search, setSearch] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  const [depositDialogOpen, setDepositDialogOpen] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
 
   useEffect(() => {
     fetchUsers();
@@ -53,11 +57,18 @@ const AdminUsers = () => {
         .select("user_id")
         .eq("role", "admin");
 
+      // Fetch wallets
+      const { data: wallets } = await supabase
+        .from("wallets")
+        .select("user_id, balance");
+
       const adminUserIds = new Set(adminRoles?.map(r => r.user_id) || []);
+      const walletMap = new Map(wallets?.map(w => [w.user_id, w.balance]) || []);
 
       const usersWithRoles = (profiles || []).map(p => ({
         ...p,
         isAdmin: adminUserIds.has(p.id),
+        walletBalance: walletMap.get(p.id) || 0,
       }));
 
       setUsers(usersWithRoles);
@@ -66,6 +77,11 @@ const AdminUsers = () => {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const openDepositDialog = (user: User) => {
+    setSelectedUser(user);
+    setDepositDialogOpen(true);
   };
 
   const toggleAdmin = async (userId: string, isCurrentlyAdmin: boolean) => {
@@ -123,6 +139,7 @@ const AdminUsers = () => {
               <TableHead>Phone</TableHead>
               <TableHead>City</TableHead>
               <TableHead>Referral Code</TableHead>
+              <TableHead>Balance</TableHead>
               <TableHead>Team</TableHead>
               <TableHead>Rank</TableHead>
               <TableHead>Role</TableHead>
@@ -144,6 +161,11 @@ const AdminUsers = () => {
                 <TableCell>
                   <code className="bg-secondary px-2 py-1 rounded text-xs">{user.referral_code}</code>
                 </TableCell>
+                <TableCell>
+                  <span className="font-medium text-primary">
+                    Rs. {(user.walletBalance || 0).toLocaleString()}
+                  </span>
+                </TableCell>
                 <TableCell>{user.team_count}</TableCell>
                 <TableCell>
                   <Badge variant="secondary">{user.rank || "Member"}</Badge>
@@ -159,23 +181,33 @@ const AdminUsers = () => {
                   {new Date(user.created_at).toLocaleDateString()}
                 </TableCell>
                 <TableCell className="text-right">
-                  <Button
-                    variant={user.isAdmin ? "destructive" : "outline"}
-                    size="sm"
-                    onClick={() => toggleAdmin(user.id, user.isAdmin || false)}
-                  >
-                    {user.isAdmin ? (
-                      <>
-                        <ShieldOff className="w-4 h-4 mr-1" />
-                        Remove Admin
-                      </>
-                    ) : (
-                      <>
-                        <Shield className="w-4 h-4 mr-1" />
-                        Make Admin
-                      </>
-                    )}
-                  </Button>
+                  <div className="flex items-center justify-end gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => openDepositDialog(user)}
+                    >
+                      <Wallet className="w-4 h-4 mr-1" />
+                      Deposit
+                    </Button>
+                    <Button
+                      variant={user.isAdmin ? "destructive" : "outline"}
+                      size="sm"
+                      onClick={() => toggleAdmin(user.id, user.isAdmin || false)}
+                    >
+                      {user.isAdmin ? (
+                        <>
+                          <ShieldOff className="w-4 h-4 mr-1" />
+                          Remove
+                        </>
+                      ) : (
+                        <>
+                          <Shield className="w-4 h-4 mr-1" />
+                          Admin
+                        </>
+                      )}
+                    </Button>
+                  </div>
                 </TableCell>
               </TableRow>
             ))}
@@ -187,6 +219,13 @@ const AdminUsers = () => {
           </div>
         )}
       </div>
+
+      <DepositFundsDialog
+        open={depositDialogOpen}
+        onOpenChange={setDepositDialogOpen}
+        user={selectedUser}
+        onSuccess={fetchUsers}
+      />
     </AdminLayout>
   );
 };
