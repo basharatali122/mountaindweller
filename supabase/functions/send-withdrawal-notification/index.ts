@@ -86,8 +86,9 @@ const handler = async (req: Request): Promise<Response> => {
       `;
 
     const emailResponse = await resend.emails.send({
-      from: "Mountain Dweller <onboarding@resend.dev>",
+      from: "Mountain Dweller <noreply@mountaindweller.online>",
       to: [userEmail],
+      reply_to: "officialmountaindweller@gmail.com",
       subject,
       html,
     });
