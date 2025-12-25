@@ -12,7 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Mail, Phone, MapPin, Send, Mountain, CheckCircle } from "lucide-react";
+import { Mail, Phone, MapPin, Send, Mountain, CheckCircle, Instagram, Facebook, Youtube } from "lucide-react";
 import { z } from "zod";
 
 const contactSchema = z.object({
@@ -302,8 +302,54 @@ const Contact = () => {
                     </div>
                     <div>
                       <h3 className="font-semibold text-foreground mb-1">Email</h3>
-                      <p className="text-muted-foreground">info@mountaindweller321.com</p>
+                      <a 
+                        href="mailto:officialmountaindweller@gmail.com" 
+                        className="text-muted-foreground hover:text-primary transition-colors"
+                      >
+                        officialmountaindweller@gmail.com
+                      </a>
                     </div>
+                  </div>
+                </div>
+
+                {/* Social Media Links */}
+                <div className="mb-10">
+                  <h3 className="font-semibold text-foreground mb-4">Follow Us</h3>
+                  <div className="flex gap-3">
+                    <a
+                      href="https://www.tiktok.com/@mountain.deweller"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center hover:bg-primary hover:text-primary-foreground transition-colors group"
+                    >
+                      <svg className="w-5 h-5 text-primary group-hover:text-primary-foreground" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-1-.05A6.33 6.33 0 0 0 5 20.1a6.34 6.34 0 0 0 10.86-4.43v-7a8.16 8.16 0 0 0 4.77 1.52v-3.4a4.85 4.85 0 0 1-1-.1z"/>
+                      </svg>
+                    </a>
+                    <a
+                      href="https://www.instagram.com/mountaindweller321"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center hover:bg-primary hover:text-primary-foreground transition-colors group"
+                    >
+                      <Instagram className="w-5 h-5 text-primary group-hover:text-primary-foreground" />
+                    </a>
+                    <a
+                      href="https://www.facebook.com/share/16qBF6cvPK/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center hover:bg-primary hover:text-primary-foreground transition-colors group"
+                    >
+                      <Facebook className="w-5 h-5 text-primary group-hover:text-primary-foreground" />
+                    </a>
+                    <a
+                      href="https://youtube.com/@mountaindweller321"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center hover:bg-primary hover:text-primary-foreground transition-colors group"
+                    >
+                      <Youtube className="w-5 h-5 text-primary group-hover:text-primary-foreground" />
+                    </a>
                   </div>
                 </div>
 
@@ -312,7 +358,7 @@ const Contact = () => {
                   <Mountain className="w-10 h-10 text-accent mx-auto mb-3" />
                   <p className="text-primary-foreground/70 text-sm mb-2">Official Website</p>
                   <p className="text-primary-foreground font-display text-xl font-bold">
-                    www.mountaindweller321.com
+                    mountaindweller.online
                   </p>
                 </div>
               </div>
