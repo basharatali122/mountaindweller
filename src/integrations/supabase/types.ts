@@ -343,6 +343,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      admin_direct_deposit: {
+        Args: { p_amount: number; p_description?: string; p_user_id: string }
+        Returns: Json
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]

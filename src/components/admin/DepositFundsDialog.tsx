@@ -51,32 +51,20 @@ export function DepositFundsDialog({
 
     setIsLoading(true);
     try {
-      // Get current wallet balance
-      const { data: wallet, error: walletFetchError } = await supabase
-        .from("wallets")
-        .select("balance")
-        .eq("user_id", user.id)
-        .single();
-
-      if (walletFetchError) throw walletFetchError;
-
-      // Update wallet balance
-      const { error: updateError } = await supabase
-        .from("wallets")
-        .update({ balance: (wallet?.balance || 0) + depositAmount })
-        .eq("user_id", user.id);
-
-      if (updateError) throw updateError;
-
-      // Create transaction record
-      const { error: txError } = await supabase.from("transactions").insert({
-        user_id: user.id,
-        type: "deposit" as const,
-        amount: depositAmount,
-        description: description || "Admin deposit",
+      // Use atomic RPC function for deposit
+      const { data, error } = await supabase.rpc("admin_direct_deposit", {
+        p_user_id: user.id,
+        p_amount: depositAmount,
+        p_description: description || "Admin deposit",
       });
 
-      if (txError) throw txError;
+      if (error) throw error;
+
+      const result = data as { success: boolean; error?: string; amount?: number };
+      
+      if (!result.success) {
+        throw new Error(result.error || "Deposit failed");
+      }
 
       toast({
         title: "Deposit successful",
@@ -91,7 +79,7 @@ export function DepositFundsDialog({
       console.error("Deposit error:", error);
       toast({
         title: "Deposit failed",
-        description: "Could not process the deposit",
+        description: error instanceof Error ? error.message : "Could not process the deposit",
         variant: "destructive",
       });
     } finally {
