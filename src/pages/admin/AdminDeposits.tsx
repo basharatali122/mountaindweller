@@ -44,6 +44,7 @@ interface DepositRequest {
   processed_at: string | null;
   user_email?: string;
   user_name?: string;
+  signed_proof_url?: string;
 }
 
 const AdminDeposits = () => {
@@ -67,7 +68,7 @@ const AdminDeposits = () => {
 
       if (error) throw error;
 
-      // Fetch user details for each deposit
+      // Fetch user details and generate signed URLs for each deposit
       const depositsWithUsers = await Promise.all(
         (data || []).map(async (deposit) => {
           const { data: profile } = await supabase
@@ -76,10 +77,20 @@ const AdminDeposits = () => {
             .eq("id", deposit.user_id)
             .single();
 
+          // Generate signed URL for payment proof (1 hour expiry)
+          let signedProofUrl: string | undefined;
+          if (deposit.payment_proof_url) {
+            const { data: signedData } = await supabase.storage
+              .from("payment-proofs")
+              .createSignedUrl(deposit.payment_proof_url, 3600);
+            signedProofUrl = signedData?.signedUrl;
+          }
+
           return {
             ...deposit,
             user_email: profile?.email || "Unknown",
             user_name: profile?.full_name || "Unknown",
+            signed_proof_url: signedProofUrl,
           };
         })
       );
@@ -362,18 +373,18 @@ const AdminDeposits = () => {
               </div>
 
               {/* Payment Proof */}
-              {selectedDeposit.payment_proof_url && (
+              {selectedDeposit.signed_proof_url && (
                 <div className="space-y-2">
                   <Label>Payment Proof</Label>
                   <div className="border rounded-lg overflow-hidden">
                     <img
-                      src={selectedDeposit.payment_proof_url}
+                      src={selectedDeposit.signed_proof_url}
                       alt="Payment proof"
                       className="w-full max-h-64 object-contain bg-muted"
                     />
                   </div>
                   <a
-                    href={selectedDeposit.payment_proof_url}
+                    href={selectedDeposit.signed_proof_url}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-sm text-primary hover:underline inline-flex items-center gap-1"
