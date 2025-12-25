@@ -11,6 +11,7 @@ import { EditProfileDialog } from "@/components/dashboard/EditProfileDialog";
 import { WithdrawalRequestDialog } from "@/components/dashboard/WithdrawalRequestDialog";
 import { ReferralEarnings } from "@/components/dashboard/ReferralEarnings";
 import { UserDepositRequestDialog } from "@/components/dashboard/UserDepositRequestDialog";
+import { DepositHistory } from "@/components/dashboard/DepositHistory";
 import { 
   Wallet, 
   Users, 
@@ -343,6 +344,9 @@ const Dashboard = () => {
 
               {/* Team Members */}
               <TeamMembersList userId={user?.id || ""} />
+
+              {/* Deposit History */}
+              <DepositHistory userId={user?.id || ""} />
 
               {/* Transaction History */}
               <TransactionHistory userId={user?.id || ""} />
