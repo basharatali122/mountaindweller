@@ -17,6 +17,7 @@ import AdminPackages from "./pages/admin/AdminPackages";
 import AdminProducts from "./pages/admin/AdminProducts";
 import AdminWithdrawals from "./pages/admin/AdminWithdrawals";
 import AdminReferrals from "./pages/admin/AdminReferrals";
+import AdminDeposits from "./pages/admin/AdminDeposits";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -44,6 +45,7 @@ const App = () => (
           <Route path="/admin/products" element={<AdminProducts />} />
           <Route path="/admin/withdrawals" element={<AdminWithdrawals />} />
           <Route path="/admin/referrals" element={<AdminReferrals />} />
+          <Route path="/admin/deposits" element={<AdminDeposits />} />
           
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
