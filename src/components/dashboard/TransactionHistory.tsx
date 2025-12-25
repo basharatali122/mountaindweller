@@ -81,6 +81,28 @@ export const TransactionHistory = ({ userId }: TransactionHistoryProps) => {
     };
 
     fetchTransactions();
+
+    // Real-time subscription for new transactions
+    const channel = supabase
+      .channel('transactions-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'transactions',
+          filter: `user_id=eq.${userId}`
+        },
+        (payload) => {
+          console.log('New transaction:', payload);
+          setTransactions((prev) => [payload.new as Transaction, ...prev].slice(0, 10));
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [userId]);
 
   if (isLoading) {
