@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Users, UserPlus } from "lucide-react";
 
@@ -18,35 +18,59 @@ export const TeamMembersList = ({ userId }: TeamMembersListProps) => {
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchTeamMembers = async () => {
-      try {
-        const { data, error } = await supabase
-          .from("referrals")
-          .select("referred_id, created_at")
-          .eq("referrer_id", userId);
+  const fetchTeamMembers = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from("referrals")
+        .select("referred_id, created_at")
+        .eq("referrer_id", userId);
 
-        if (error) throw error;
+      if (error) throw error;
 
-        if (data && data.length > 0) {
-          const memberIds = data.map((r) => r.referred_id);
-          const { data: profiles, error: profilesError } = await supabase
-            .from("profiles")
-            .select("id, full_name, email, created_at, rank")
-            .in("id", memberIds);
+      if (data && data.length > 0) {
+        const memberIds = data.map((r) => r.referred_id);
+        const { data: profiles, error: profilesError } = await supabase
+          .from("profiles")
+          .select("id, full_name, email, created_at, rank")
+          .in("id", memberIds);
 
-          if (profilesError) throw profilesError;
-          setMembers(profiles || []);
-        }
-      } catch (error) {
-        console.error("Error fetching team members:", error);
-      } finally {
-        setIsLoading(false);
+        if (profilesError) throw profilesError;
+        setMembers(profiles || []);
+      } else {
+        setMembers([]);
       }
-    };
-
-    fetchTeamMembers();
+    } catch (error) {
+      console.error("Error fetching team members:", error);
+    } finally {
+      setIsLoading(false);
+    }
   }, [userId]);
+
+  useEffect(() => {
+    fetchTeamMembers();
+
+    // Real-time subscription for new referrals
+    const channel = supabase
+      .channel('referrals-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'referrals',
+          filter: `referrer_id=eq.${userId}`
+        },
+        (payload) => {
+          console.log('New referral:', payload);
+          fetchTeamMembers(); // Refetch to get the profile data
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [userId, fetchTeamMembers]);
 
   if (isLoading) {
     return (

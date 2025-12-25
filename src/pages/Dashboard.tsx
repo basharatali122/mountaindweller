@@ -70,6 +70,47 @@ const Dashboard = () => {
   useEffect(() => {
     if (user) {
       fetchData();
+
+      // Real-time subscription for wallet updates
+      const walletChannel = supabase
+        .channel('wallet-changes')
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'wallets',
+            filter: `user_id=eq.${user.id}`
+          },
+          (payload) => {
+            console.log('Wallet updated:', payload);
+            setWallet(payload.new as WalletData);
+          }
+        )
+        .subscribe();
+
+      // Real-time subscription for profile updates
+      const profileChannel = supabase
+        .channel('profile-changes')
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'profiles',
+            filter: `id=eq.${user.id}`
+          },
+          (payload) => {
+            console.log('Profile updated:', payload);
+            setProfile(payload.new as Profile);
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(walletChannel);
+        supabase.removeChannel(profileChannel);
+      };
     }
   }, [user]);
 
