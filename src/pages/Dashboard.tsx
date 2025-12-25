@@ -7,6 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { TeamMembersList } from "@/components/dashboard/TeamMembersList";
 import { TransactionHistory } from "@/components/dashboard/TransactionHistory";
 import { RankProgress } from "@/components/dashboard/RankProgress";
+import { EditProfileDialog } from "@/components/dashboard/EditProfileDialog";
 import { 
   Wallet, 
   Users, 
@@ -348,6 +349,10 @@ const Dashboard = () => {
                 </h2>
                 <div className="space-y-4">
                   <div>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wider">Full Name</p>
+                    <p className="text-foreground">{profile?.full_name || "Not set"}</p>
+                  </div>
+                  <div>
                     <p className="text-xs text-muted-foreground uppercase tracking-wider">Email</p>
                     <p className="text-foreground">{profile?.email}</p>
                   </div>
@@ -359,6 +364,19 @@ const Dashboard = () => {
                     <p className="text-xs text-muted-foreground uppercase tracking-wider">City</p>
                     <p className="text-foreground">{profile?.city || "Not set"}</p>
                   </div>
+                </div>
+                <div className="mt-4">
+                  {profile && (
+                    <EditProfileDialog
+                      userId={user?.id || ""}
+                      currentProfile={{
+                        full_name: profile.full_name,
+                        phone: profile.phone,
+                        city: profile.city,
+                      }}
+                      onUpdate={fetchData}
+                    />
+                  )}
                 </div>
               </div>
 
