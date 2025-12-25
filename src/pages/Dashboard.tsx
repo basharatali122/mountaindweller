@@ -8,6 +8,7 @@ import { TeamMembersList } from "@/components/dashboard/TeamMembersList";
 import { TransactionHistory } from "@/components/dashboard/TransactionHistory";
 import { RankProgress } from "@/components/dashboard/RankProgress";
 import { EditProfileDialog } from "@/components/dashboard/EditProfileDialog";
+import { WithdrawalRequestDialog } from "@/components/dashboard/WithdrawalRequestDialog";
 import { 
   Wallet, 
   Users, 
@@ -314,10 +315,11 @@ const Dashboard = () => {
                       <span className="text-xs">Buy Package</span>
                     </Button>
                   </Link>
-                  <Button variant="outline" className="h-auto flex-col py-4 gap-2" disabled>
-                    <Wallet className="w-5 h-5" />
-                    <span className="text-xs">Withdraw</span>
-                  </Button>
+                  <WithdrawalRequestDialog
+                    userId={user?.id || ""}
+                    walletBalance={wallet?.balance || 0}
+                    onSuccess={fetchData}
+                  />
                   <Link to="/products">
                     <Button variant="outline" className="w-full h-auto flex-col py-4 gap-2">
                       <TrendingUp className="w-5 h-5" />
