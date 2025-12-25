@@ -71,43 +71,25 @@ const AdminWithdrawals = () => {
     setIsProcessing(true);
 
     try {
-      const { error } = await supabase
-        .from("withdrawals")
-        .update({
-          status,
-          admin_notes: adminNotes || null,
-          processed_at: new Date().toISOString(),
-        })
-        .eq("id", selectedWithdrawal.id);
+      // Use atomic RPC function to prevent race conditions
+      const { data: result, error } = await supabase.rpc("process_withdrawal_request", {
+        p_withdrawal_id: selectedWithdrawal.id,
+        p_status: status,
+        p_admin_notes: adminNotes || null,
+      });
 
       if (error) throw error;
 
-      // If approved, deduct from wallet
-      if (status === "approved") {
-        const { data: wallet } = await supabase
-          .from("wallets")
-          .select("balance, total_withdrawn")
-          .eq("user_id", selectedWithdrawal.user_id)
-          .single();
-
-        if (wallet) {
-          await supabase
-            .from("wallets")
-            .update({
-              balance: wallet.balance - selectedWithdrawal.amount,
-              total_withdrawn: wallet.total_withdrawn + selectedWithdrawal.amount,
-            })
-            .eq("user_id", selectedWithdrawal.user_id);
-
-          // Add transaction record
-          await supabase.from("transactions").insert({
-            user_id: selectedWithdrawal.user_id,
-            type: "withdrawal",
-            amount: -selectedWithdrawal.amount,
-            description: "Withdrawal processed",
-            reference_id: selectedWithdrawal.id,
-          });
-        }
+      const response = result as { success: boolean; error?: string; status?: string; amount?: number; user_id?: string };
+      
+      if (!response.success) {
+        toast({
+          title: "Processing Failed",
+          description: response.error || "Could not process withdrawal request",
+          variant: "destructive",
+        });
+        setIsProcessing(false);
+        return;
       }
 
       // Send email notification
@@ -139,6 +121,7 @@ const AdminWithdrawals = () => {
       setAdminNotes("");
       fetchWithdrawals();
     } catch (error) {
+      console.error("Process withdrawal error:", error);
       toast({ title: "Error processing withdrawal", variant: "destructive" });
     } finally {
       setIsProcessing(false);
