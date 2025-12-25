@@ -4,6 +4,9 @@ import { Layout } from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { TeamMembersList } from "@/components/dashboard/TeamMembersList";
+import { TransactionHistory } from "@/components/dashboard/TransactionHistory";
+import { RankProgress } from "@/components/dashboard/RankProgress";
 import { 
   Wallet, 
   Users, 
@@ -13,7 +16,6 @@ import {
   LogOut, 
   ArrowUpRight,
   Award,
-  Clock,
   Mountain
 } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
@@ -289,17 +291,11 @@ const Dashboard = () => {
                 </div>
               </div>
 
-              {/* Recent Activity */}
-              <div className="bg-card rounded-2xl border border-border p-6">
-                <h2 className="font-display text-xl font-bold text-foreground mb-4">
-                  Recent Activity
-                </h2>
-                <div className="text-center py-8 text-muted-foreground">
-                  <Clock className="w-10 h-10 mx-auto mb-3 opacity-50" />
-                  <p>No recent activity</p>
-                  <p className="text-sm">Your transactions will appear here</p>
-                </div>
-              </div>
+              {/* Team Members */}
+              <TeamMembersList userId={user?.id || ""} />
+
+              {/* Transaction History */}
+              <TransactionHistory userId={user?.id || ""} />
             </div>
 
             {/* Sidebar */}
@@ -326,51 +322,10 @@ const Dashboard = () => {
               </div>
 
               {/* Rank Progress */}
-              <div className="bg-card rounded-2xl border border-border p-6">
-                <h2 className="font-display text-xl font-bold text-foreground mb-4">
-                  Rank Progress
-                </h2>
-                <div className="space-y-3">
-                  {[
-                    { name: "Member", required: 0 },
-                    { name: "Supervisor", required: 10 },
-                    { name: "Assistant Manager", required: 15 },
-                    { name: "Manager", required: 20 },
-                    { name: "Senior Manager", required: 30 },
-                  ].map((rank, index) => {
-                    const isActive = profile?.rank === rank.name;
-                    const isPast = (profile?.team_count || 0) >= rank.required;
-                    
-                    return (
-                      <div
-                        key={index}
-                        className={`flex items-center gap-3 p-3 rounded-lg ${
-                          isActive 
-                            ? "bg-primary/10 border border-primary/30" 
-                            : isPast 
-                              ? "bg-secondary" 
-                              : ""
-                        }`}
-                      >
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
-                          isPast ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
-                        }`}>
-                          {rank.required}
-                        </div>
-                        <div className="flex-1">
-                          <p className={`font-medium ${isActive ? "text-primary" : "text-foreground"}`}>
-                            {rank.name}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {rank.required} members
-                          </p>
-                        </div>
-                        {isPast && <CheckCircle className="w-5 h-5 text-primary" />}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+              <RankProgress 
+                currentRank={profile?.rank || "Member"} 
+                teamCount={profile?.team_count || 0} 
+              />
             </div>
           </div>
         </div>
