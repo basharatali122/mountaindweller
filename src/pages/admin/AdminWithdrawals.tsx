@@ -110,6 +110,24 @@ const AdminWithdrawals = () => {
         }
       }
 
+      // Send email notification
+      try {
+        await supabase.functions.invoke("send-withdrawal-notification", {
+          body: {
+            userEmail: selectedWithdrawal.profiles?.email,
+            userName: selectedWithdrawal.profiles?.full_name,
+            amount: selectedWithdrawal.amount,
+            status,
+            bankName: selectedWithdrawal.bank_name,
+            accountNumber: selectedWithdrawal.account_number,
+            adminNotes: adminNotes || undefined,
+          },
+        });
+        console.log("Withdrawal email notification sent");
+      } catch (emailError) {
+        console.error("Failed to send email notification:", emailError);
+      }
+
       toast({
         title: `Withdrawal ${status}`,
         description: status === "approved" 
