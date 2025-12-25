@@ -7,17 +7,22 @@ interface ReferralEarningsProps {
   userId: string;
 }
 
+interface LevelEarnings {
+  level1: number;
+  level2: number;
+  level3: number;
+  total: number;
+}
+
 export const ReferralEarnings = ({ userId }: ReferralEarningsProps) => {
-  const [totalEarnings, setTotalEarnings] = useState(0);
-  const [paidReferrals, setPaidReferrals] = useState(0);
-  const [pendingReferrals, setPendingReferrals] = useState(0);
+  const [earnings, setEarnings] = useState<LevelEarnings>({ level1: 0, level2: 0, level3: 0, total: 0 });
+  const [referralCounts, setReferralCounts] = useState({ paid: 0, pending: 0 });
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     if (userId) {
       fetchReferralStats();
 
-      // Real-time subscription for referral updates
       const channel = supabase
         .channel('referral-earnings')
         .on(
@@ -25,8 +30,8 @@ export const ReferralEarnings = ({ userId }: ReferralEarningsProps) => {
           {
             event: '*',
             schema: 'public',
-            table: 'referrals',
-            filter: `referrer_id=eq.${userId}`
+            table: 'transactions',
+            filter: `user_id=eq.${userId}`
           },
           () => {
             fetchReferralStats();
@@ -42,20 +47,50 @@ export const ReferralEarnings = ({ userId }: ReferralEarningsProps) => {
 
   const fetchReferralStats = async () => {
     try {
-      const { data, error } = await supabase
+      // Fetch referral bonus transactions to calculate earnings by level
+      const { data: transactions, error: txError } = await supabase
+        .from("transactions")
+        .select("amount, description")
+        .eq("user_id", userId)
+        .eq("type", "referral_bonus");
+
+      if (txError) throw txError;
+
+      let level1 = 0, level2 = 0, level3 = 0;
+      
+      transactions?.forEach(tx => {
+        const desc = tx.description || "";
+        if (desc.includes("Level 1")) {
+          level1 += tx.amount;
+        } else if (desc.includes("Level 2")) {
+          level2 += tx.amount;
+        } else if (desc.includes("Level 3")) {
+          level3 += tx.amount;
+        } else {
+          // Legacy transactions without level info count as level 1
+          level1 += tx.amount;
+        }
+      });
+
+      setEarnings({
+        level1,
+        level2,
+        level3,
+        total: level1 + level2 + level3
+      });
+
+      // Fetch referral counts
+      const { data: referrals, error: refError } = await supabase
         .from("referrals")
-        .select("bonus_amount, is_paid")
+        .select("is_paid")
         .eq("referrer_id", userId);
 
-      if (error) throw error;
+      if (refError) throw refError;
 
-      const paid = data?.filter(r => r.is_paid) || [];
-      const pending = data?.filter(r => !r.is_paid) || [];
-      const total = paid.reduce((sum, r) => sum + (r.bonus_amount || 0), 0);
-
-      setTotalEarnings(total);
-      setPaidReferrals(paid.length);
-      setPendingReferrals(pending.length);
+      setReferralCounts({
+        paid: referrals?.filter(r => r.is_paid).length || 0,
+        pending: referrals?.filter(r => !r.is_paid).length || 0
+      });
     } catch (error) {
       console.error("Error fetching referral stats:", error);
     } finally {
@@ -88,29 +123,44 @@ export const ReferralEarnings = ({ userId }: ReferralEarningsProps) => {
             <div>
               <p className="text-sm text-muted-foreground">Total Earned</p>
               <p className="font-display text-2xl font-bold text-accent">
-                {totalEarnings.toLocaleString()} <span className="text-sm">PKR</span>
+                {earnings.total.toLocaleString()} <span className="text-sm">PKR</span>
               </p>
             </div>
             <TrendingUp className="w-8 h-8 text-accent/50" />
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <div className="bg-primary/5 rounded-xl p-4 text-center">
-            <Users className="w-5 h-5 text-primary mx-auto mb-1" />
-            <p className="font-display text-xl font-bold text-foreground">{paidReferrals}</p>
-            <p className="text-xs text-muted-foreground">Paid Referrals</p>
-          </div>
-          <div className="bg-muted rounded-xl p-4 text-center">
-            <Users className="w-5 h-5 text-muted-foreground mx-auto mb-1" />
-            <p className="font-display text-xl font-bold text-foreground">{pendingReferrals}</p>
-            <p className="text-xs text-muted-foreground">Pending</p>
+        {/* Earnings by Level */}
+        <div className="space-y-2">
+          <p className="text-xs text-muted-foreground uppercase tracking-wider">By Level</p>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between bg-primary/10 rounded-lg px-3 py-2">
+              <span className="text-sm text-foreground">Level 1 <span className="text-muted-foreground">(10%)</span></span>
+              <span className="font-medium text-primary">{earnings.level1.toLocaleString()} PKR</span>
+            </div>
+            <div className="flex items-center justify-between bg-sky/10 rounded-lg px-3 py-2">
+              <span className="text-sm text-foreground">Level 2 <span className="text-muted-foreground">(5%)</span></span>
+              <span className="font-medium text-sky">{earnings.level2.toLocaleString()} PKR</span>
+            </div>
+            <div className="flex items-center justify-between bg-gold/10 rounded-lg px-3 py-2">
+              <span className="text-sm text-foreground">Level 3 <span className="text-muted-foreground">(2%)</span></span>
+              <span className="font-medium text-gold">{earnings.level3.toLocaleString()} PKR</span>
+            </div>
           </div>
         </div>
 
-        <p className="text-xs text-muted-foreground text-center">
-          Earn 10% commission when your referrals purchase packages
-        </p>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-primary/5 rounded-xl p-3 text-center">
+            <Users className="w-4 h-4 text-primary mx-auto mb-1" />
+            <p className="font-display text-lg font-bold text-foreground">{referralCounts.paid}</p>
+            <p className="text-xs text-muted-foreground">Paid</p>
+          </div>
+          <div className="bg-muted rounded-xl p-3 text-center">
+            <Users className="w-4 h-4 text-muted-foreground mx-auto mb-1" />
+            <p className="font-display text-lg font-bold text-foreground">{referralCounts.pending}</p>
+            <p className="text-xs text-muted-foreground">Pending</p>
+          </div>
+        </div>
       </div>
     </div>
   );
