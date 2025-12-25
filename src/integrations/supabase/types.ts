@@ -350,6 +350,22 @@ export type Database = {
         }
         Returns: boolean
       }
+      process_deposit_request: {
+        Args: {
+          p_admin_notes?: string
+          p_approved: boolean
+          p_deposit_id: string
+        }
+        Returns: Json
+      }
+      process_withdrawal_request: {
+        Args: {
+          p_admin_notes?: string
+          p_status: Database["public"]["Enums"]["withdrawal_status"]
+          p_withdrawal_id: string
+        }
+        Returns: Json
+      }
       purchase_package: {
         Args: { p_package_id: string; p_user_id: string }
         Returns: Json

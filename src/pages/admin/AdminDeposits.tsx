@@ -113,49 +113,25 @@ const AdminDeposits = () => {
 
     setIsProcessing(true);
     try {
-      // Update deposit request status
-      const { error: updateError } = await supabase
-        .from("deposit_requests")
-        .update({
-          status: approved ? "approved" : "rejected",
-          admin_notes: adminNotes || null,
-          processed_at: new Date().toISOString(),
-        })
-        .eq("id", selectedDeposit.id);
+      // Use atomic RPC function to prevent race conditions
+      const { data: result, error } = await supabase.rpc("process_deposit_request", {
+        p_deposit_id: selectedDeposit.id,
+        p_approved: approved,
+        p_admin_notes: adminNotes || null,
+      });
 
-      if (updateError) throw updateError;
+      if (error) throw error;
 
-      if (approved) {
-        // Get current wallet balance
-        const { data: wallet, error: walletFetchError } = await supabase
-          .from("wallets")
-          .select("balance")
-          .eq("user_id", selectedDeposit.user_id)
-          .single();
-
-        if (walletFetchError) throw walletFetchError;
-
-        // Update wallet balance
-        const { error: walletUpdateError } = await supabase
-          .from("wallets")
-          .update({
-            balance: (wallet?.balance || 0) + selectedDeposit.amount,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("user_id", selectedDeposit.user_id);
-
-        if (walletUpdateError) throw walletUpdateError;
-
-        // Create transaction record
-        const { error: txError } = await supabase.from("transactions").insert({
-          user_id: selectedDeposit.user_id,
-          type: "deposit" as const,
-          amount: selectedDeposit.amount,
-          description: `Bank transfer deposit${selectedDeposit.bank_reference ? ` (Ref: ${selectedDeposit.bank_reference})` : ""}`,
-          reference_id: selectedDeposit.id,
+      const response = result as { success: boolean; error?: string; status?: string; amount?: number; user_id?: string };
+      
+      if (!response.success) {
+        toast({
+          title: "Processing Failed",
+          description: response.error || "Could not process deposit request",
+          variant: "destructive",
         });
-
-        if (txError) throw txError;
+        setIsProcessing(false);
+        return;
       }
 
       // Send email notification
