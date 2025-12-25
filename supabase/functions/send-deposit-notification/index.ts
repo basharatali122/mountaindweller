@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { Resend } from "https://esm.sh/resend@2.0.0";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
 const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
 
@@ -24,9 +25,58 @@ const handler = async (req: Request): Promise<Response> => {
   }
 
   try {
+    // Verify authentication - only admins can send notifications
+    const authHeader = req.headers.get("authorization");
+    if (!authHeader) {
+      console.error("No authorization header provided");
+      return new Response(
+        JSON.stringify({ error: "Unauthorized - No authorization header" }),
+        { status: 401, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    // Create Supabase client with the user's JWT
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+      global: {
+        headers: { Authorization: authHeader },
+      },
+    });
+
+    // Verify the user is authenticated and is an admin
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      console.error("Auth error:", authError);
+      return new Response(
+        JSON.stringify({ error: "Unauthorized - Invalid token" }),
+        { status: 401, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    // Check if user has admin role using the has_role function
+    const { data: isAdmin, error: roleError } = await supabase
+      .rpc("has_role", { _user_id: user.id, _role: "admin" });
+
+    if (roleError || !isAdmin) {
+      console.error("Role check error:", roleError, "isAdmin:", isAdmin);
+      return new Response(
+        JSON.stringify({ error: "Forbidden - Admin access required" }),
+        { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
     const { userEmail, userName, amount, status, adminNotes }: DepositNotificationRequest = await req.json();
 
-    console.log(`Sending deposit ${status} notification to ${userEmail}`);
+    // Validate required fields
+    if (!userEmail || !amount || !status) {
+      return new Response(
+        JSON.stringify({ error: "Missing required fields" }),
+        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    console.log(`Admin ${user.email} sending deposit ${status} notification to ${userEmail}`);
 
     const isApproved = status === "approved";
     const subject = isApproved

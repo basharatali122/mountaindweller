@@ -93,19 +93,17 @@ export function UserDepositRequestDialog({
 
       if (uploadError) throw uploadError;
 
-      // Get public URL
-      const { data: urlData } = supabase.storage
-        .from("payment-proofs")
-        .getPublicUrl(fileName);
+      // Store just the file path - we'll generate signed URLs when viewing
+      const paymentProofPath = fileName;
 
-      // Create deposit request
+      // Create deposit request with file path (not public URL)
       const { error: insertError } = await supabase
         .from("deposit_requests")
         .insert({
           user_id: userId,
           amount: depositAmount,
           bank_reference: bankReference || null,
-          payment_proof_url: urlData.publicUrl,
+          payment_proof_url: paymentProofPath,
         });
 
       if (insertError) throw insertError;
