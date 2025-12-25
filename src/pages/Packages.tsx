@@ -1,51 +1,109 @@
+import { useState, useEffect } from "react";
 import { Layout } from "@/components/layout/Layout";
-import { Link } from "react-router-dom";
-import { Button } from "@/components/ui/button";
-import { Package, ArrowRight, CheckCircle, Star, Crown, Gem } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { PurchasePackageDialog } from "@/components/packages/PurchasePackageDialog";
+import { Package, CheckCircle, Star, Crown, Gem } from "lucide-react";
+import type { User } from "@supabase/supabase-js";
 
-const packages = [
-  {
-    investment: "5,000",
-    bonus: "1,500",
-    icon: Package,
-    title: "Starter",
-    popular: false,
-    features: [
-      "Access to all products",
-      "Basic training materials",
-      "Referral bonus eligibility",
-      "Wallet access",
-    ],
-  },
-  {
-    investment: "10,000",
-    bonus: "3,000",
-    icon: Star,
-    title: "Growth",
-    popular: true,
-    features: [
-      "Everything in Starter",
-      "Advanced training modules",
-      "Priority support",
-      "Higher earning potential",
-    ],
-  },
-  {
-    investment: "15,000",
-    bonus: "6,000",
-    icon: Crown,
-    title: "Premium",
-    popular: false,
-    features: [
-      "Everything in Growth",
-      "VIP mentorship access",
-      "Exclusive product bundles",
-      "Maximum earning potential",
-    ],
-  },
-];
+interface PackageData {
+  id: string;
+  name: string;
+  investment_amount: number;
+  bonus_amount: number;
+  features: string[] | null;
+}
+
+const packageIcons: Record<string, typeof Package> = {
+  Starter: Package,
+  Growth: Star,
+  Premium: Crown,
+};
 
 const Packages = () => {
+  const [user, setUser] = useState<User | null>(null);
+  const [packages, setPackages] = useState<PackageData[]>([]);
+  const [walletBalance, setWalletBalance] = useState(0);
+  const [userPackageId, setUserPackageId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user || null);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
+      setUser(session?.user || null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    fetchPackages();
+  }, []);
+
+  useEffect(() => {
+    if (user) {
+      fetchUserData();
+    } else {
+      setWalletBalance(0);
+      setUserPackageId(null);
+    }
+  }, [user]);
+
+  const fetchPackages = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("packages")
+        .select("*")
+        .eq("is_active", true)
+        .order("investment_amount", { ascending: true });
+
+      if (error) throw error;
+      
+      const mappedPackages = data?.map(pkg => ({
+        ...pkg,
+        features: Array.isArray(pkg.features) ? pkg.features as string[] : []
+      })) || [];
+      
+      setPackages(mappedPackages);
+    } catch (error) {
+      console.error("Error fetching packages:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const fetchUserData = async () => {
+    if (!user) return;
+    
+    try {
+      const [walletRes, profileRes] = await Promise.all([
+        supabase.from("wallets").select("balance").eq("user_id", user.id).maybeSingle(),
+        supabase.from("profiles").select("package_id").eq("id", user.id).maybeSingle(),
+      ]);
+
+      setWalletBalance(walletRes.data?.balance || 0);
+      setUserPackageId(profileRes.data?.package_id || null);
+    } catch (error) {
+      console.error("Error fetching user data:", error);
+    }
+  };
+
+  const handlePurchaseSuccess = () => {
+    fetchUserData();
+  };
+
+  if (isLoading) {
+    return (
+      <Layout>
+        <div className="min-h-[70vh] flex items-center justify-center">
+          <div className="w-12 h-12 rounded-full border-4 border-primary border-t-transparent animate-spin" />
+        </div>
+      </Layout>
+    );
+  }
+
   return (
     <Layout>
       {/* Hero Section */}
@@ -72,6 +130,12 @@ const Packages = () => {
               Select the investment level that matches your goals. Every package comes with 
               instant bonuses and full access to our business opportunity.
             </p>
+            {user && (
+              <div className="mt-6 inline-block bg-primary-foreground/10 backdrop-blur-sm rounded-xl px-6 py-3">
+                <span className="text-primary-foreground/70 text-sm">Your Balance: </span>
+                <span className="text-primary-foreground font-bold text-lg">{walletBalance.toLocaleString()} PKR</span>
+              </div>
+            )}
           </div>
         </div>
       </section>
@@ -80,184 +144,166 @@ const Packages = () => {
       <section className="py-24 bg-background">
         <div className="container mx-auto px-4">
           <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
-            {packages.map((pkg, index) => (
-              <div
-                key={index}
-                className={`relative rounded-3xl p-8 transition-all duration-300 ${
-                  pkg.popular
-                    ? "bg-primary text-primary-foreground scale-105 shadow-lg"
-                    : "bg-card border border-border hover:border-primary/30 hover:shadow-elegant"
-                }`}
-              >
-                {pkg.popular && (
-                  <div className="absolute -top-4 left-1/2 -translate-x-1/2">
-                    <span className="bg-accent text-accent-foreground text-sm font-semibold px-4 py-1 rounded-full shadow-gold">
-                      Most Popular
-                    </span>
-                  </div>
-                )}
-
-                <div className="text-center mb-8">
-                  <div
-                    className={`w-16 h-16 rounded-2xl mx-auto mb-4 flex items-center justify-center ${
-                      pkg.popular ? "bg-primary-foreground/20" : "bg-primary/10"
-                    }`}
-                  >
-                    <pkg.icon
-                      className={`w-8 h-8 ${pkg.popular ? "text-primary-foreground" : "text-primary"}`}
-                    />
-                  </div>
-                  <h3
-                    className={`font-display text-2xl font-bold mb-2 ${
-                      pkg.popular ? "text-primary-foreground" : "text-foreground"
-                    }`}
-                  >
-                    {pkg.title}
-                  </h3>
-                </div>
-
-                <div className="text-center mb-8">
-                  <div className="mb-2">
-                    <span
-                      className={`text-sm uppercase tracking-wider ${
-                        pkg.popular ? "text-primary-foreground/70" : "text-muted-foreground"
-                      }`}
-                    >
-                      Investment
-                    </span>
-                  </div>
-                  <div
-                    className={`font-display text-5xl font-bold ${
-                      pkg.popular ? "text-primary-foreground" : "text-foreground"
-                    }`}
-                  >
-                    {pkg.investment}
-                    <span className="text-lg ml-1">PKR</span>
-                  </div>
-                </div>
-
+            {packages.map((pkg, index) => {
+              const isPopular = index === 1;
+              const IconComponent = packageIcons[pkg.name] || Package;
+              
+              return (
                 <div
-                  className={`rounded-2xl p-6 mb-8 ${
-                    pkg.popular ? "bg-primary-foreground/10" : "bg-accent/10"
+                  key={pkg.id}
+                  className={`relative rounded-3xl p-8 transition-all duration-300 ${
+                    isPopular
+                      ? "bg-primary text-primary-foreground scale-105 shadow-lg"
+                      : "bg-card border border-border hover:border-primary/30 hover:shadow-elegant"
                   }`}
                 >
-                  <div
-                    className={`text-sm uppercase tracking-wider mb-1 ${
-                      pkg.popular ? "text-primary-foreground/70" : "text-muted-foreground"
-                    }`}
-                  >
-                    Instant Bonus
-                  </div>
-                  <div
-                    className={`font-display text-3xl font-bold ${
-                      pkg.popular ? "text-accent" : "text-accent"
-                    }`}
-                  >
-                    {pkg.bonus} <span className="text-base">PKR</span>
-                  </div>
-                </div>
+                  {isPopular && (
+                    <div className="absolute -top-4 left-1/2 -translate-x-1/2">
+                      <span className="bg-accent text-accent-foreground text-sm font-semibold px-4 py-1 rounded-full shadow-gold">
+                        Most Popular
+                      </span>
+                    </div>
+                  )}
 
-                <ul className="space-y-3 mb-8">
-                  {pkg.features.map((feature, featureIndex) => (
-                    <li key={featureIndex} className="flex items-center gap-3">
-                      <CheckCircle
-                        className={`w-5 h-5 shrink-0 ${
-                          pkg.popular ? "text-accent" : "text-primary"
-                        }`}
+                  <div className="text-center mb-8">
+                    <div
+                      className={`w-16 h-16 rounded-2xl mx-auto mb-4 flex items-center justify-center ${
+                        isPopular ? "bg-primary-foreground/20" : "bg-primary/10"
+                      }`}
+                    >
+                      <IconComponent
+                        className={`w-8 h-8 ${isPopular ? "text-primary-foreground" : "text-primary"}`}
                       />
+                    </div>
+                    <h3
+                      className={`font-display text-2xl font-bold mb-2 ${
+                        isPopular ? "text-primary-foreground" : "text-foreground"
+                      }`}
+                    >
+                      {pkg.name}
+                    </h3>
+                  </div>
+
+                  <div className="text-center mb-8">
+                    <div className="mb-2">
                       <span
-                        className={`text-sm ${
-                          pkg.popular ? "text-primary-foreground/90" : "text-muted-foreground"
+                        className={`text-sm uppercase tracking-wider ${
+                          isPopular ? "text-primary-foreground/70" : "text-muted-foreground"
                         }`}
                       >
-                        {feature}
+                        Investment
                       </span>
-                    </li>
-                  ))}
-                </ul>
+                    </div>
+                    <div
+                      className={`font-display text-5xl font-bold ${
+                        isPopular ? "text-primary-foreground" : "text-foreground"
+                      }`}
+                    >
+                      {pkg.investment_amount.toLocaleString()}
+                      <span className="text-lg ml-1">PKR</span>
+                    </div>
+                  </div>
 
-                <Link to="/contact">
-                  <Button
-                    className={`w-full ${
-                      pkg.popular
-                        ? "bg-accent text-accent-foreground hover:bg-accent/90 shadow-gold"
-                        : "bg-primary text-primary-foreground hover:bg-primary/90"
+                  <div
+                    className={`rounded-2xl p-6 mb-8 ${
+                      isPopular ? "bg-primary-foreground/10" : "bg-accent/10"
                     }`}
-                    size="lg"
                   >
-                    Get Started
-                    <ArrowRight className="ml-2 w-5 h-5" />
-                  </Button>
-                </Link>
-              </div>
-            ))}
+                    <div
+                      className={`text-sm uppercase tracking-wider mb-1 ${
+                        isPopular ? "text-primary-foreground/70" : "text-muted-foreground"
+                      }`}
+                    >
+                      Instant Bonus
+                    </div>
+                    <div className="font-display text-3xl font-bold text-accent">
+                      {pkg.bonus_amount.toLocaleString()} <span className="text-base">PKR</span>
+                    </div>
+                  </div>
+
+                  {pkg.features && pkg.features.length > 0 && (
+                    <ul className="space-y-3 mb-8">
+                      {pkg.features.map((feature, featureIndex) => (
+                        <li key={featureIndex} className="flex items-center gap-3">
+                          <CheckCircle
+                            className={`w-5 h-5 shrink-0 ${
+                              isPopular ? "text-accent" : "text-primary"
+                            }`}
+                          />
+                          <span
+                            className={`text-sm ${
+                              isPopular ? "text-primary-foreground/90" : "text-muted-foreground"
+                            }`}
+                          >
+                            {feature}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+
+                  <PurchasePackageDialog
+                    packageId={pkg.id}
+                    packageName={pkg.name}
+                    investmentAmount={pkg.investment_amount}
+                    bonusAmount={pkg.bonus_amount}
+                    walletBalance={walletBalance}
+                    isLoggedIn={!!user}
+                    hasPackage={!!userPackageId}
+                    onSuccess={handlePurchaseSuccess}
+                    variant={isPopular ? "popular" : "default"}
+                  />
+                </div>
+              );
+            })}
           </div>
         </div>
       </section>
 
       {/* Package Comparison Table */}
-      <section className="py-24 bg-secondary/30">
-        <div className="container mx-auto px-4">
-          <div className="max-w-3xl mx-auto text-center mb-16">
-            <span className="inline-block text-accent font-semibold uppercase tracking-wider text-sm mb-4">
-              Quick Comparison
-            </span>
-            <h2 className="font-display text-4xl md:text-5xl font-bold text-foreground">
-              Investment vs Bonus
-            </h2>
-          </div>
+      {packages.length > 0 && (
+        <section className="py-24 bg-secondary/30">
+          <div className="container mx-auto px-4">
+            <div className="max-w-3xl mx-auto text-center mb-16">
+              <span className="inline-block text-accent font-semibold uppercase tracking-wider text-sm mb-4">
+                Quick Comparison
+              </span>
+              <h2 className="font-display text-4xl md:text-5xl font-bold text-foreground">
+                Investment vs Bonus
+              </h2>
+            </div>
 
-          <div className="max-w-2xl mx-auto bg-card rounded-2xl border border-border overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-primary text-primary-foreground">
-                  <tr>
-                    <th className="px-6 py-4 text-left font-display font-semibold">Investment (PKR)</th>
-                    <th className="px-6 py-4 text-center font-display font-semibold">Bonus (PKR)</th>
-                    <th className="px-6 py-4 text-center font-display font-semibold">Return</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {packages.map((pkg, index) => (
-                    <tr key={index} className="hover:bg-secondary/50 transition-colors">
-                      <td className="px-6 py-4 font-medium text-foreground">{pkg.investment}</td>
-                      <td className="px-6 py-4 text-center">
-                        <span className="inline-block bg-accent/10 text-accent font-semibold px-3 py-1 rounded-full text-sm">
-                          {pkg.bonus}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-center text-muted-foreground">
-                        {((parseInt(pkg.bonus.replace(",", "")) / parseInt(pkg.investment.replace(",", ""))) * 100).toFixed(0)}%
-                      </td>
+            <div className="max-w-2xl mx-auto bg-card rounded-2xl border border-border overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-primary text-primary-foreground">
+                    <tr>
+                      <th className="px-6 py-4 text-left font-display font-semibold">Investment (PKR)</th>
+                      <th className="px-6 py-4 text-center font-display font-semibold">Bonus (PKR)</th>
+                      <th className="px-6 py-4 text-center font-display font-semibold">Return</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {packages.map((pkg) => (
+                      <tr key={pkg.id} className="hover:bg-secondary/50 transition-colors">
+                        <td className="px-6 py-4 font-medium text-foreground">{pkg.investment_amount.toLocaleString()}</td>
+                        <td className="px-6 py-4 text-center">
+                          <span className="inline-block bg-accent/10 text-accent font-semibold px-3 py-1 rounded-full text-sm">
+                            {pkg.bonus_amount.toLocaleString()}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-center text-muted-foreground">
+                          {((pkg.bonus_amount / pkg.investment_amount) * 100).toFixed(0)}%
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
-        </div>
-      </section>
-
-      {/* CTA Section */}
-      <section className="py-24 bg-mountain">
-        <div className="container mx-auto px-4 text-center">
-          <div className="max-w-2xl mx-auto">
-            <h2 className="font-display text-4xl md:text-5xl font-bold text-mountain-foreground mb-6">
-              Questions About Packages?
-            </h2>
-            <p className="text-mountain-foreground/70 text-lg mb-10">
-              Our team is here to help you choose the right package for your goals. 
-              Reach out and let's discuss your journey to success.
-            </p>
-            <Link to="/contact">
-              <Button size="lg" className="bg-accent text-accent-foreground hover:bg-accent/90 shadow-gold text-lg px-8 font-semibold">
-                Contact Us
-                <ArrowRight className="ml-2 w-5 h-5" />
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </section>
+        </section>
+      )}
     </Layout>
   );
 };
