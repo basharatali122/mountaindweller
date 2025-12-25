@@ -14,6 +14,42 @@ export type Database = {
   }
   public: {
     Tables: {
+      deposit_requests: {
+        Row: {
+          admin_notes: string | null
+          amount: number
+          bank_reference: string | null
+          created_at: string
+          id: string
+          payment_proof_url: string | null
+          processed_at: string | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          admin_notes?: string | null
+          amount: number
+          bank_reference?: string | null
+          created_at?: string
+          id?: string
+          payment_proof_url?: string | null
+          processed_at?: string | null
+          status?: string
+          user_id: string
+        }
+        Update: {
+          admin_notes?: string | null
+          amount?: number
+          bank_reference?: string | null
+          created_at?: string
+          id?: string
+          payment_proof_url?: string | null
+          processed_at?: string | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       packages: {
         Row: {
           bonus_amount: number

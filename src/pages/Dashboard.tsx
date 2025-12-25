@@ -10,6 +10,7 @@ import { RankProgress } from "@/components/dashboard/RankProgress";
 import { EditProfileDialog } from "@/components/dashboard/EditProfileDialog";
 import { WithdrawalRequestDialog } from "@/components/dashboard/WithdrawalRequestDialog";
 import { ReferralEarnings } from "@/components/dashboard/ReferralEarnings";
+import { UserDepositRequestDialog } from "@/components/dashboard/UserDepositRequestDialog";
 import { 
   Wallet, 
   Users, 
@@ -309,7 +310,11 @@ const Dashboard = () => {
                 <h2 className="font-display text-xl font-bold text-foreground mb-4">
                   Quick Actions
                 </h2>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                  <UserDepositRequestDialog
+                    userId={user?.id || ""}
+                    onSuccess={fetchData}
+                  />
                   <Link to="/packages">
                     <Button variant="outline" className="w-full h-auto flex-col py-4 gap-2">
                       <ArrowUpRight className="w-5 h-5" />
