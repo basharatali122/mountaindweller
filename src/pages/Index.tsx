@@ -52,7 +52,7 @@ const Index = () => {
                 </Button>
               </Link>
               <Link to="/business-plan">
-                <Button size="lg" variant="outline" className="border-primary-foreground/30 text-primary-foreground hover:bg-primary-foreground/10 text-lg px-8">
+                <Button size="lg" variant="outline" className="border-primary-foreground/50 bg-primary-foreground/10 text-primary-foreground hover:bg-primary-foreground hover:text-primary text-lg px-8">
                   Explore Opportunity
                 </Button>
               </Link>
@@ -242,7 +242,7 @@ const Index = () => {
               </Button>
             </Link>
             <Link to="/packages">
-              <Button size="lg" variant="outline" className="border-mountain-foreground/30 text-mountain-foreground hover:bg-mountain-foreground/10 text-lg px-8">
+              <Button size="lg" variant="outline" className="border-mountain-foreground/50 bg-mountain-foreground/10 text-mountain-foreground hover:bg-mountain-foreground hover:text-mountain text-lg px-8">
                 View Packages
               </Button>
             </Link>
