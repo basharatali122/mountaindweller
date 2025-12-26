@@ -53,19 +53,40 @@ const Dashboard = () => {
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const checkUserRole = async (userId: string) => {
+      const { data: roles } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", userId)
+        .eq("role", "admin");
+      
+      // If user is admin, redirect to admin panel
+      if (roles && roles.length > 0) {
+        navigate("/admin");
+        return false;
+      }
+      return true;
+    };
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!session?.user) {
         navigate("/auth");
       } else {
-        setUser(session.user);
+        const canAccess = await checkUserRole(session.user.id);
+        if (canAccess) {
+          setUser(session.user);
+        }
       }
     });
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (!session?.user) {
         navigate("/auth");
       } else {
-        setUser(session.user);
+        const canAccess = await checkUserRole(session.user.id);
+        if (canAccess) {
+          setUser(session.user);
+        }
       }
     });
 
