@@ -4,6 +4,7 @@ import { Menu, X, Mountain, User, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
+import { CartSheet } from "@/components/cart/CartSheet";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 
 const navLinks = [
@@ -77,6 +78,7 @@ export function Navbar() {
 
           {/* CTA Buttons */}
           <div className="hidden lg:flex items-center gap-3">
+            <CartSheet />
             {user ? (
               <>
                 <Link to="/dashboard">
@@ -137,6 +139,11 @@ export function Navbar() {
                 {link.label}
               </Link>
             ))}
+            
+            <div className="flex items-center justify-between mt-4 pt-4 border-t border-border">
+              <span className="text-sm text-muted-foreground">Shopping Cart</span>
+              <CartSheet />
+            </div>
             
             {user ? (
               <>

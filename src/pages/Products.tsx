@@ -1,8 +1,12 @@
+import { useEffect, useState } from "react";
 import { Layout } from "@/components/layout/Layout";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ShoppingBag, ArrowRight, Leaf, Shield, Sparkles, Droplets, Sun, Heart } from "lucide-react";
+import { ProductCard } from "@/components/products/ProductCard";
+import { supabase } from "@/integrations/supabase/client";
+import { ShoppingBag, ArrowRight, Leaf, Shield, Sparkles, Sun, Loader2 } from "lucide-react";
 
+// Static product images for fallback
 import shampooImg from "@/assets/products/shampoo.png";
 import sunblockImg from "@/assets/products/sunblock.png";
 import facewashImg from "@/assets/products/facewash.png";
@@ -11,66 +15,57 @@ import nevolisImg from "@/assets/products/nevolis-cream.png";
 import tuttiFruttiFacialImg from "@/assets/products/tutti-frutti-facial.png";
 import alpineGlowImg from "@/assets/products/alpine-glow.png";
 
-const products = [
-  {
-    name: "MD Shampoo",
-    price: "3,000",
-    image: shampooImg,
-    icon: Leaf,
-    features: ["Anti-Hair Fall", "Herbal Formula", "Strengthens Roots"],
-    description: "Premium herbal shampoo formulated to reduce hair fall and strengthen hair from root to tip.",
-  },
-  {
-    name: "Sun Block SPF50",
-    price: "2,000",
-    image: sunblockImg,
-    icon: Sun,
-    features: ["UV Protection", "Brightens Skin", "Non-Greasy"],
-    description: "Advanced sun protection with SPF50 that shields and brightens your skin naturally.",
-  },
-  {
-    name: "Face Wash",
-    price: "TBD",
-    image: facewashImg,
-    icon: Droplets,
-    features: ["Deep Cleansing", "Hydrating", "All Skin Types"],
-    description: "Gentle yet effective face wash suitable for all skin types, leaving your skin fresh and hydrated.",
-  },
-  {
-    name: "Serum Vitamin C",
-    price: "4,000",
-    image: vitaminCSerumImg,
-    icon: Sparkles,
-    features: ["Brightening", "Anti-Aging", "Cruelty-Free"],
-    description: "Powerful Vitamin C serum that brightens skin tone and fights signs of aging naturally.",
-  },
-  {
-    name: "Cream Nevolis",
-    price: "2,000",
-    image: nevolisImg,
-    icon: Shield,
-    features: ["Deep Moisturizing", "Visible Results", "Premium Formula"],
-    description: "Luxurious whitening cream that provides glow boost with visible results from first use.",
-  },
-  {
-    name: "Tutti Frutti Urgent Facial",
-    price: "2,500",
-    image: tuttiFruttiFacialImg,
-    icon: Sparkles,
-    features: ["Radiance Boost", "Instant Glow", "Premium Quality"],
-    description: "Luxurious facial treatment that delivers radiance you can see, for an instant glow.",
-  },
-  {
-    name: "Pure Alpine Glow",
-    price: "3,500",
-    image: alpineGlowImg,
-    icon: Heart,
-    features: ["Hydra Repair", "Moisture Cream", "Deep Nourishment"],
-    description: "Premium moisture cream that repairs and hydrates skin for a natural alpine glow.",
-  },
-];
+const defaultImages: Record<string, string> = {
+  "md shampoo": shampooImg,
+  "sun block spf50": sunblockImg,
+  "face wash": facewashImg,
+  "serum vitamin c": vitaminCSerumImg,
+  "cream nevolis": nevolisImg,
+  "tutti frutti urgent facial": tuttiFruttiFacialImg,
+  "pure alpine glow": alpineGlowImg,
+};
+
+interface Product {
+  id: string;
+  name: string;
+  description: string | null;
+  price: number | null;
+  features: string[] | null;
+  image_url: string | null;
+  is_active: boolean | null;
+}
 
 const Products = () => {
+  const [products, setProducts] = useState<Product[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    fetchProducts();
+  }, []);
+
+  const fetchProducts = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("products")
+        .select("*")
+        .eq("is_active", true)
+        .order("created_at", { ascending: true });
+
+      if (error) throw error;
+      setProducts(data || []);
+    } catch (error) {
+      console.error("Error fetching products:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const getProductImage = (product: Product) => {
+    if (product.image_url) return product.image_url;
+    const fallback = defaultImages[product.name.toLowerCase()];
+    return fallback || shampooImg;
+  };
+
   return (
     <Layout>
       {/* Hero Section */}
@@ -104,71 +99,32 @@ const Products = () => {
       {/* Products Grid */}
       <section className="py-24 bg-background">
         <div className="container mx-auto px-4">
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {products.map((product, index) => (
-              <div
-                key={index}
-                className="group bg-card rounded-3xl border border-border overflow-hidden hover:border-primary/30 hover:shadow-elegant transition-all duration-300"
-              >
-                {/* Product Image Area */}
-                <div className="aspect-square bg-secondary/30 flex items-center justify-center relative overflow-hidden">
-                  <img 
-                    src={product.image} 
-                    alt={product.name}
-                    className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500"
-                  />
-                  <div className="absolute top-4 right-4">
-                    <div className="w-12 h-12 rounded-full bg-card/90 backdrop-blur-sm flex items-center justify-center shadow-elegant">
-                      <product.icon className="w-6 h-6 text-primary" />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Product Details */}
-                <div className="p-6">
-                  <h3 className="font-display text-xl font-bold text-foreground mb-2">
-                    {product.name}
-                  </h3>
-                  <p className="text-muted-foreground text-sm mb-4 leading-relaxed">
-                    {product.description}
-                  </p>
-
-                  {/* Features */}
-                  <div className="flex flex-wrap gap-2 mb-6">
-                    {product.features.map((feature, featureIndex) => (
-                      <span
-                        key={featureIndex}
-                        className="text-xs font-medium px-3 py-1 rounded-full bg-primary/10 text-primary"
-                      >
-                        {feature}
-                      </span>
-                    ))}
-                  </div>
-
-                  {/* Price & CTA */}
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <span className="text-sm text-muted-foreground">Price</span>
-                      <div className="font-display text-2xl font-bold text-foreground">
-                        {product.price === "TBD" ? (
-                          <span className="text-muted-foreground text-lg">Coming Soon</span>
-                        ) : (
-                          <>
-                            {product.price} <span className="text-sm">PKR</span>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                    <Link to="/contact">
-                      <Button variant="outline" className="border-primary text-primary hover:bg-primary hover:text-primary-foreground">
-                        Learn More
-                      </Button>
-                    </Link>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
+          {isLoading ? (
+            <div className="flex justify-center items-center py-20">
+              <Loader2 className="w-8 h-8 animate-spin text-primary" />
+            </div>
+          ) : products.length === 0 ? (
+            <div className="text-center py-20">
+              <ShoppingBag className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+              <h3 className="text-xl font-semibold text-foreground mb-2">No Products Available</h3>
+              <p className="text-muted-foreground">Check back soon for our product catalog.</p>
+            </div>
+          ) : (
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+              {products.map((product) => (
+                <ProductCard
+                  key={product.id}
+                  id={product.id}
+                  name={product.name}
+                  price={product.price}
+                  image={getProductImage(product)}
+                  icon={Sparkles}
+                  features={product.features || []}
+                  description={product.description || ""}
+                />
+              ))}
+            </div>
+          )}
         </div>
       </section>
 
