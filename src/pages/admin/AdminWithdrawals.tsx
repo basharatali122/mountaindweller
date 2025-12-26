@@ -52,13 +52,32 @@ const AdminWithdrawals = () => {
 
   const fetchWithdrawals = async () => {
     try {
-      const { data, error } = await supabase
+      const { data: withdrawalsData, error } = await supabase
         .from("withdrawals")
         .select("*")
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      setWithdrawals(data || []);
+      
+      if (withdrawalsData && withdrawalsData.length > 0) {
+        // Fetch profiles for all user_ids
+        const userIds = [...new Set(withdrawalsData.map(w => w.user_id))];
+        const { data: profilesData } = await supabase
+          .from("profiles")
+          .select("id, full_name, email")
+          .in("id", userIds);
+        
+        // Map profiles to withdrawals
+        const profilesMap = new Map(profilesData?.map(p => [p.id, p]) || []);
+        const withdrawalsWithProfiles = withdrawalsData.map(w => ({
+          ...w,
+          profiles: profilesMap.get(w.user_id) || null
+        }));
+        
+        setWithdrawals(withdrawalsWithProfiles as Withdrawal[]);
+      } else {
+        setWithdrawals([]);
+      }
     } catch (error) {
       console.error("Error fetching withdrawals:", error);
     } finally {
