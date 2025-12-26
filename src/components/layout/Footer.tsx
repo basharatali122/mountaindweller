@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
-import { Mountain, Mail, Phone, MapPin, Facebook, Instagram, Youtube } from "lucide-react";
+import { Mail, Phone, MapPin, Facebook, Instagram, Youtube } from "lucide-react";
+import logo from "@/assets/logo.jpg";
 
 export function Footer() {
   return (
@@ -9,14 +10,11 @@ export function Footer() {
           {/* Brand */}
           <div className="space-y-4">
             <Link to="/" className="flex items-center gap-2">
-              <div className="w-10 h-10 rounded-lg bg-accent flex items-center justify-center">
-                <Mountain className="w-6 h-6 text-accent-foreground" />
-              </div>
-              <div className="flex flex-col">
-                <span className="font-display text-lg font-bold leading-tight">
-                  Mountain Dweller
-                </span>
-              </div>
+              <img 
+                src={logo} 
+                alt="Mountain Dweller Logo" 
+                className="h-16 w-auto object-contain"
+              />
             </Link>
             <p className="text-mountain-foreground/70 text-sm leading-relaxed">
               Empowering individuals to achieve financial freedom through innovative business opportunities and premium products.
