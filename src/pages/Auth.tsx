@@ -53,17 +53,31 @@ const Auth = () => {
   });
   const [signupErrors, setSignupErrors] = useState<Record<string, string>>({});
 
-  // Check if user is already logged in
+  // Check if user is already logged in and redirect based on role
   useEffect(() => {
+    const checkUserAndRedirect = async (userId: string) => {
+      const { data: roles } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", userId)
+        .eq("role", "admin");
+      
+      if (roles && roles.length > 0) {
+        navigate("/admin");
+      } else {
+        navigate("/dashboard");
+      }
+    };
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (session?.user) {
-        navigate("/dashboard");
+        checkUserAndRedirect(session.user.id);
       }
     });
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
-        navigate("/dashboard");
+        checkUserAndRedirect(session.user.id);
       }
     });
 
@@ -90,11 +104,26 @@ const Auth = () => {
           variant: "destructive",
         });
       } else {
-        toast({
-          title: "Welcome back!",
-          description: "You've been logged in successfully.",
-        });
-        navigate("/dashboard");
+        // Check if admin and redirect accordingly
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: roles } = await supabase
+            .from("user_roles")
+            .select("role")
+            .eq("user_id", user.id)
+            .eq("role", "admin");
+          
+          toast({
+            title: "Welcome back!",
+            description: "You've been logged in successfully.",
+          });
+          
+          if (roles && roles.length > 0) {
+            navigate("/admin");
+          } else {
+            navigate("/dashboard");
+          }
+        }
       }
     } catch (error) {
       if (error instanceof z.ZodError) {
