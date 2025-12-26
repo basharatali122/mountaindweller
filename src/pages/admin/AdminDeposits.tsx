@@ -243,104 +243,167 @@ const AdminDeposits = () => {
         </div>
       </div>
 
-      {/* Deposits Table */}
-      <div className="bg-card rounded-xl border border-border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>User</TableHead>
-              <TableHead>Amount</TableHead>
-              <TableHead>Reference</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Requested</TableHead>
-              <TableHead>Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {deposits.length === 0 ? (
+      {/* Deposits Table - Desktop */}
+      <div className="hidden md:block bg-card rounded-xl border border-border overflow-hidden">
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                  No deposit requests yet
-                </TableCell>
+                <TableHead>User</TableHead>
+                <TableHead>Amount</TableHead>
+                <TableHead>Reference</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Requested</TableHead>
+                <TableHead>Actions</TableHead>
               </TableRow>
-            ) : (
-              deposits.map((deposit) => (
-                <TableRow key={deposit.id}>
-                  <TableCell>
-                    <div>
-                      <p className="font-medium">{deposit.user_name}</p>
-                      <p className="text-sm text-muted-foreground">{deposit.user_email}</p>
-                    </div>
-                  </TableCell>
-                  <TableCell className="font-medium">
-                    Rs. {deposit.amount.toLocaleString()}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {deposit.bank_reference || "-"}
-                  </TableCell>
-                  <TableCell>{getStatusBadge(deposit.status)}</TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {format(new Date(deposit.created_at), "MMM d, yyyy")}
-                  </TableCell>
-                  <TableCell>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        setSelectedDeposit(deposit);
-                        setAdminNotes(deposit.admin_notes || "");
-                      }}
-                    >
-                      <Eye className="w-4 h-4 mr-1" />
-                      View
-                    </Button>
+            </TableHeader>
+            <TableBody>
+              {deposits.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                    No deposit requests yet
                   </TableCell>
                 </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
+              ) : (
+                deposits.map((deposit) => (
+                  <TableRow key={deposit.id}>
+                    <TableCell>
+                      <div>
+                        <p className="font-medium">{deposit.user_name}</p>
+                        <p className="text-sm text-muted-foreground truncate max-w-[150px]">{deposit.user_email}</p>
+                      </div>
+                    </TableCell>
+                    <TableCell className="font-medium whitespace-nowrap">
+                      Rs. {deposit.amount.toLocaleString()}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {deposit.bank_reference || "-"}
+                    </TableCell>
+                    <TableCell>{getStatusBadge(deposit.status)}</TableCell>
+                    <TableCell className="text-muted-foreground whitespace-nowrap">
+                      {format(new Date(deposit.created_at), "MMM d, yyyy")}
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setSelectedDeposit(deposit);
+                          setAdminNotes(deposit.admin_notes || "");
+                        }}
+                      >
+                        <Eye className="w-4 h-4 mr-1" />
+                        View
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </div>
+
+      {/* Deposits Cards - Mobile */}
+      <div className="md:hidden space-y-3">
+        {deposits.length === 0 ? (
+          <div className="bg-card rounded-xl border border-border p-6 text-center text-muted-foreground">
+            No deposit requests yet
+          </div>
+        ) : (
+          deposits.map((deposit) => (
+            <div key={deposit.id} className="bg-card rounded-xl border border-border p-4 space-y-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium truncate">{deposit.user_name}</p>
+                  <p className="text-sm text-muted-foreground truncate">{deposit.user_email}</p>
+                </div>
+                {getStatusBadge(deposit.status)}
+              </div>
+              
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <p className="text-muted-foreground text-xs">Amount</p>
+                  <p className="font-bold">Rs. {deposit.amount.toLocaleString()}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground text-xs">Requested</p>
+                  <p className="font-medium">{format(new Date(deposit.created_at), "MMM d, yyyy")}</p>
+                </div>
+              </div>
+              
+              {deposit.bank_reference && (
+                <div className="text-sm">
+                  <p className="text-muted-foreground text-xs">Reference</p>
+                  <p className="font-medium truncate">{deposit.bank_reference}</p>
+                </div>
+              )}
+              
+              <Button
+                size="sm"
+                variant="outline"
+                className="w-full"
+                onClick={() => {
+                  setSelectedDeposit(deposit);
+                  setAdminNotes(deposit.admin_notes || "");
+                }}
+              >
+                <Eye className="w-4 h-4 mr-2" />
+                View Details
+              </Button>
+            </div>
+          ))
+        )}
       </div>
 
       {/* Deposit Details Dialog */}
       <Dialog open={!!selectedDeposit} onOpenChange={() => setSelectedDeposit(null)}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Deposit Request Details</DialogTitle>
+            <DialogTitle className="text-lg">Deposit Request Details</DialogTitle>
             <DialogDescription>
               Review the deposit request and payment proof
             </DialogDescription>
           </DialogHeader>
 
           {selectedDeposit && (
-            <div className="space-y-4 py-4">
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <p className="text-muted-foreground">User</p>
-                  <p className="font-medium">{selectedDeposit.user_name}</p>
-                  <p className="text-muted-foreground text-xs">{selectedDeposit.user_email}</p>
+            <div className="space-y-4 py-2">
+              {/* User & Amount - Stack on mobile */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                <div className="bg-muted/50 p-3 rounded-lg">
+                  <p className="text-muted-foreground text-xs uppercase tracking-wide mb-1">User</p>
+                  <p className="font-medium truncate">{selectedDeposit.user_name}</p>
+                  <p className="text-muted-foreground text-xs truncate">{selectedDeposit.user_email}</p>
                 </div>
-                <div>
-                  <p className="text-muted-foreground">Amount</p>
+                <div className="bg-muted/50 p-3 rounded-lg">
+                  <p className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Amount</p>
                   <p className="font-bold text-lg">Rs. {selectedDeposit.amount.toLocaleString()}</p>
                 </div>
-                <div>
-                  <p className="text-muted-foreground">Reference</p>
-                  <p className="font-medium">{selectedDeposit.bank_reference || "Not provided"}</p>
+              </div>
+
+              {/* Reference & Status */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                <div className="bg-muted/50 p-3 rounded-lg">
+                  <p className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Reference</p>
+                  <p className="font-medium break-all">{selectedDeposit.bank_reference || "Not provided"}</p>
                 </div>
-                <div>
-                  <p className="text-muted-foreground">Status</p>
-                  {getStatusBadge(selectedDeposit.status)}
+                <div className="bg-muted/50 p-3 rounded-lg">
+                  <p className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Status</p>
+                  <div className="mt-1">{getStatusBadge(selectedDeposit.status)}</div>
                 </div>
-                <div>
-                  <p className="text-muted-foreground">Requested</p>
+              </div>
+
+              {/* Dates */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                <div className="bg-muted/50 p-3 rounded-lg">
+                  <p className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Requested</p>
                   <p className="font-medium">
                     {format(new Date(selectedDeposit.created_at), "MMM d, yyyy h:mm a")}
                   </p>
                 </div>
                 {selectedDeposit.processed_at && (
-                  <div>
-                    <p className="text-muted-foreground">Processed</p>
+                  <div className="bg-muted/50 p-3 rounded-lg">
+                    <p className="text-muted-foreground text-xs uppercase tracking-wide mb-1">Processed</p>
                     <p className="font-medium">
                       {format(new Date(selectedDeposit.processed_at), "MMM d, yyyy h:mm a")}
                     </p>
@@ -351,12 +414,12 @@ const AdminDeposits = () => {
               {/* Payment Proof */}
               {selectedDeposit.signed_proof_url && (
                 <div className="space-y-2">
-                  <Label>Payment Proof</Label>
-                  <div className="border rounded-lg overflow-hidden">
+                  <Label className="text-xs uppercase tracking-wide text-muted-foreground">Payment Proof</Label>
+                  <div className="border rounded-lg overflow-hidden bg-muted">
                     <img
                       src={selectedDeposit.signed_proof_url}
                       alt="Payment proof"
-                      className="w-full max-h-64 object-contain bg-muted"
+                      className="w-full max-h-48 sm:max-h-64 object-contain"
                     />
                   </div>
                   <a
@@ -370,23 +433,27 @@ const AdminDeposits = () => {
                 </div>
               )}
 
-              {/* Admin Notes */}
+              {/* Admin Notes Input */}
               {selectedDeposit.status === "pending" && (
                 <div className="space-y-2">
-                  <Label htmlFor="notes">Admin Notes (Optional)</Label>
+                  <Label htmlFor="notes" className="text-xs uppercase tracking-wide text-muted-foreground">
+                    Admin Notes (Optional)
+                  </Label>
                   <Textarea
                     id="notes"
                     placeholder="Add notes about this deposit..."
                     value={adminNotes}
                     onChange={(e) => setAdminNotes(e.target.value)}
+                    className="min-h-[80px]"
                   />
                 </div>
               )}
 
+              {/* Existing Admin Notes Display */}
               {selectedDeposit.admin_notes && selectedDeposit.status !== "pending" && (
                 <div className="space-y-2">
-                  <Label>Admin Notes</Label>
-                  <p className="text-sm text-muted-foreground bg-muted p-3 rounded-lg">
+                  <Label className="text-xs uppercase tracking-wide text-muted-foreground">Admin Notes</Label>
+                  <p className="text-sm text-muted-foreground bg-muted p-3 rounded-lg break-words">
                     {selectedDeposit.admin_notes}
                   </p>
                 </div>
@@ -394,14 +461,14 @@ const AdminDeposits = () => {
             </div>
           )}
 
-          <DialogFooter>
+          <DialogFooter className="flex-col sm:flex-row gap-2 sm:gap-0">
             {selectedDeposit?.status === "pending" ? (
               <>
                 <Button
                   variant="outline"
                   onClick={() => processDeposit(false)}
                   disabled={isProcessing}
-                  className="text-red-600 border-red-200 hover:bg-red-50"
+                  className="w-full sm:w-auto text-red-600 border-red-200 hover:bg-red-50 dark:hover:bg-red-950"
                 >
                   {isProcessing ? (
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -413,7 +480,7 @@ const AdminDeposits = () => {
                 <Button
                   onClick={() => processDeposit(true)}
                   disabled={isProcessing}
-                  className="bg-green-600 hover:bg-green-700"
+                  className="w-full sm:w-auto bg-green-600 hover:bg-green-700"
                 >
                   {isProcessing ? (
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -424,7 +491,7 @@ const AdminDeposits = () => {
                 </Button>
               </>
             ) : (
-              <Button variant="outline" onClick={() => setSelectedDeposit(null)}>
+              <Button variant="outline" onClick={() => setSelectedDeposit(null)} className="w-full sm:w-auto">
                 Close
               </Button>
             )}
