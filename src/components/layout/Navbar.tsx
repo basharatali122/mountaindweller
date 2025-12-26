@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Menu, X, Mountain, User, LogOut } from "lucide-react";
+import { Menu, X, User, LogOut } from "lucide-react";
+import logo from "@/assets/logo.jpg";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -45,17 +46,11 @@ export function Navbar() {
         <div className="flex items-center justify-between h-16 md:h-20">
           {/* Logo */}
           <Link to="/" className="flex items-center gap-2 group">
-            <div className="w-10 h-10 rounded-lg bg-gradient-hero flex items-center justify-center">
-              <Mountain className="w-6 h-6 text-primary-foreground" />
-            </div>
-            <div className="flex flex-col">
-              <span className="font-display text-lg font-bold text-foreground leading-tight">
-                Mountain Dweller
-              </span>
-              <span className="text-xs text-muted-foreground tracking-wider hidden sm:block">
-                BUSINESS • MARKETING • FREEDOM
-              </span>
-            </div>
+            <img 
+              src={logo} 
+              alt="Mountain Dweller Logo" 
+              className="h-12 w-auto object-contain"
+            />
           </Link>
 
           {/* Desktop Navigation */}
