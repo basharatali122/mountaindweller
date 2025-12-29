@@ -30,6 +30,7 @@ const BANK_DETAILS = {
 };
 
 // Compress image to reduce file size for faster mobile uploads
+// Uses createObjectURL instead of FileReader for better mobile compatibility
 const compressImage = async (
   file: File,
   maxWidth = 1920,
@@ -37,12 +38,14 @@ const compressImage = async (
   quality = 0.8
 ): Promise<File> => {
   return new Promise((resolve, reject) => {
-    const reader = new FileReader();
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(file);
     
-    reader.onload = (e) => {
-      const img = new Image();
+    img.onload = () => {
+      // Clean up object URL after image loads
+      URL.revokeObjectURL(objectUrl);
       
-      img.onload = () => {
+      try {
         const canvas = document.createElement("canvas");
         let { width, height } = img;
 
@@ -84,14 +87,17 @@ const compressImage = async (
           "image/jpeg",
           quality
         );
-      };
-
-      img.onerror = () => reject(new Error("Failed to load image"));
-      img.src = e.target?.result as string;
+      } catch (err) {
+        reject(err);
+      }
     };
 
-    reader.onerror = () => reject(new Error("Failed to read file"));
-    reader.readAsDataURL(file);
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error("Failed to load image"));
+    };
+    
+    img.src = objectUrl;
   });
 };
 
