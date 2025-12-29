@@ -200,14 +200,18 @@ export function UserDepositRequestDialog({
     }
   };
 
-  // Upload file using XMLHttpRequest for real progress tracking (better mobile support)
-  const uploadWithProgress = (file: File, fileName: string): Promise<void> => {
+  // Upload file using XMLHttpRequest with user's access token for authentication
+  const uploadWithProgress = async (file: File, fileName: string): Promise<void> => {
+    // Get the user's current session token for authentication
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      throw new Error("Not authenticated. Please log in again.");
+    }
+    
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       
-      // Get the Supabase URL and key from client
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
       
       xhr.upload.addEventListener("progress", (event) => {
         if (event.lengthComputable) {
@@ -220,7 +224,8 @@ export function UserDepositRequestDialog({
         if (xhr.status >= 200 && xhr.status < 300) {
           resolve();
         } else {
-          reject(new Error(`Upload failed with status ${xhr.status}`));
+          console.error("Upload response:", xhr.status, xhr.responseText);
+          reject(new Error(`Upload failed with status ${xhr.status}: ${xhr.responseText || 'Unknown error'}`));
         }
       });
 
@@ -242,9 +247,10 @@ export function UserDepositRequestDialog({
       // Open connection to Supabase Storage
       xhr.open("POST", `${supabaseUrl}/storage/v1/object/payment-proofs/${fileName}`);
       
-      // Set headers
-      xhr.setRequestHeader("Authorization", `Bearer ${supabaseKey}`);
-      xhr.setRequestHeader("x-upsert", "false");
+      // Use the user's access token for authentication (not the anon key)
+      xhr.setRequestHeader("Authorization", `Bearer ${session.access_token}`);
+      xhr.setRequestHeader("Content-Type", file.type || "image/jpeg");
+      xhr.setRequestHeader("x-upsert", "true");
       
       // Send the file
       xhr.send(file);
