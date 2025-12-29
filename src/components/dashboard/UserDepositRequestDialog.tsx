@@ -200,6 +200,57 @@ export function UserDepositRequestDialog({
     }
   };
 
+  // Upload file using XMLHttpRequest for real progress tracking (better mobile support)
+  const uploadWithProgress = (file: File, fileName: string): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      
+      // Get the Supabase URL and key from client
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+      
+      xhr.upload.addEventListener("progress", (event) => {
+        if (event.lengthComputable) {
+          const percent = Math.round((event.loaded / event.total) * 100);
+          setUploadProgress(percent);
+        }
+      });
+
+      xhr.addEventListener("load", () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve();
+        } else {
+          reject(new Error(`Upload failed with status ${xhr.status}`));
+        }
+      });
+
+      xhr.addEventListener("error", () => {
+        reject(new Error("Network error during upload"));
+      });
+
+      xhr.addEventListener("timeout", () => {
+        reject(new Error("Upload timeout"));
+      });
+
+      xhr.addEventListener("abort", () => {
+        reject(new Error("Upload aborted"));
+      });
+
+      // Set timeout to 2 minutes for slow mobile connections
+      xhr.timeout = 120000;
+
+      // Open connection to Supabase Storage
+      xhr.open("POST", `${supabaseUrl}/storage/v1/object/payment-proofs/${fileName}`);
+      
+      // Set headers
+      xhr.setRequestHeader("Authorization", `Bearer ${supabaseKey}`);
+      xhr.setRequestHeader("x-upsert", "false");
+      
+      // Send the file
+      xhr.send(file);
+    });
+  };
+
   const handleSubmit = async () => {
     if (!amount || !proofFile) {
       toast({
@@ -222,46 +273,14 @@ export function UserDepositRequestDialog({
 
     setIsLoading(true);
     setUploadProgress(0);
-    setUploadStatus("Preparing upload...");
+    setUploadStatus("Uploading...");
 
     try {
       // Generate file name
       const fileName = `${userId}/${Date.now()}.jpg`;
       
-      setUploadStatus("Uploading...");
-      
-      // Create upload with timeout
-      const uploadPromise = supabase.storage
-        .from("payment-proofs")
-        .upload(fileName, proofFile, {
-          cacheControl: "3600",
-          upsert: false,
-        });
-
-      // Simulate progress for better UX (actual progress tracking not available in supabase-js)
-      const progressInterval = setInterval(() => {
-        setUploadProgress((prev) => {
-          if (prev >= 90) {
-            clearInterval(progressInterval);
-            return 90;
-          }
-          return prev + 10;
-        });
-      }, 300);
-
-      // Set timeout for slow connections
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error("Upload timeout")), 60000);
-      });
-
-      const { error: uploadError } = await Promise.race([
-        uploadPromise,
-        timeoutPromise,
-      ]);
-
-      clearInterval(progressInterval);
-
-      if (uploadError) throw uploadError;
+      // Upload using XMLHttpRequest for real progress
+      await uploadWithProgress(proofFile, fileName);
 
       setUploadProgress(100);
       setUploadStatus("Creating request...");
@@ -299,10 +318,12 @@ export function UserDepositRequestDialog({
       console.error("Deposit request error:", error);
       
       let errorMessage = "Could not submit deposit request. Please try again.";
-      if (error.message === "Upload timeout") {
+      if (error.message?.includes("timeout")) {
         errorMessage = "Upload timed out. Please check your internet connection and try again.";
-      } else if (error.message?.includes("network")) {
+      } else if (error.message?.includes("network") || error.message?.includes("Network")) {
         errorMessage = "Network error. Please check your connection and try again.";
+      } else if (error.message?.includes("status")) {
+        errorMessage = "Upload failed. Please try again.";
       }
       
       toast({
