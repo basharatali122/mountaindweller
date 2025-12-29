@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, memo, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { useCart } from "@/contexts/CartContext";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Minus, ShoppingCart, Check } from "lucide-react";
 import { LucideIcon } from "lucide-react";
+import { OptimizedImage } from "@/components/ui/optimized-image";
 
 interface ProductCardProps {
   id: string;
@@ -15,7 +16,7 @@ interface ProductCardProps {
   description: string;
 }
 
-export const ProductCard = ({
+export const ProductCard = memo(function ProductCard({
   id,
   name,
   price,
@@ -23,7 +24,7 @@ export const ProductCard = ({
   icon: Icon,
   features,
   description,
-}: ProductCardProps) => {
+}: ProductCardProps) {
   const [quantity, setQuantity] = useState(1);
   const [justAdded, setJustAdded] = useState(false);
   const { addToCart } = useCart();
@@ -31,8 +32,8 @@ export const ProductCard = ({
 
   const isPriceAvailable = price !== null && price > 0;
 
-  const handleAddToCart = () => {
-    if (!isPriceAvailable) return;
+  const handleAddToCart = useCallback(() => {
+    if (!isPriceAvailable || !price) return;
 
     addToCart(
       {
@@ -54,16 +55,25 @@ export const ProductCard = ({
       setJustAdded(false);
       setQuantity(1);
     }, 1500);
-  };
+  }, [isPriceAvailable, price, addToCart, id, name, image, quantity, toast]);
+
+  const decrementQuantity = useCallback(() => {
+    setQuantity((q) => Math.max(1, q - 1));
+  }, []);
+
+  const incrementQuantity = useCallback(() => {
+    setQuantity((q) => q + 1);
+  }, []);
 
   return (
     <div className="group bg-card rounded-3xl border border-border overflow-hidden hover:border-primary/30 hover:shadow-elegant transition-all duration-300">
       {/* Product Image Area */}
       <div className="aspect-square bg-secondary/30 flex items-center justify-center relative overflow-hidden">
-        <img
+        <OptimizedImage
           src={image}
           alt={name}
           className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500"
+          wrapperClassName="w-full h-full"
         />
         <div className="absolute top-4 right-4">
           <div className="w-12 h-12 rounded-full bg-card/90 backdrop-blur-sm flex items-center justify-center shadow-elegant">
@@ -118,7 +128,7 @@ export const ProductCard = ({
                     variant="ghost"
                     size="icon"
                     className="h-8 w-8"
-                    onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                    onClick={decrementQuantity}
                     disabled={quantity <= 1}
                   >
                     <Minus className="h-4 w-4" />
@@ -128,7 +138,7 @@ export const ProductCard = ({
                     variant="ghost"
                     size="icon"
                     className="h-8 w-8"
-                    onClick={() => setQuantity((q) => q + 1)}
+                    onClick={incrementQuantity}
                   >
                     <Plus className="h-4 w-4" />
                   </Button>
@@ -159,4 +169,4 @@ export const ProductCard = ({
       </div>
     </div>
   );
-};
+});
