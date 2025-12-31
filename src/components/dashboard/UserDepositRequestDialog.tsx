@@ -200,7 +200,7 @@ export function UserDepositRequestDialog({
     }
   };
 
-  // Upload file using XMLHttpRequest for best mobile compatibility
+  // Upload file using FormData + XMLHttpRequest for best mobile compatibility
   const uploadFile = async (file: File, fileName: string): Promise<void> => {
     console.log("Starting upload for:", fileName, "Size:", file.size);
     
@@ -234,9 +234,31 @@ export function UserDepositRequestDialog({
       // Set timeout to 90 seconds
       xhr.timeout = 90000;
       
-      // Track upload progress
+      // Start a progress simulation for mobile browsers that don't fire progress events
+      let progressInterval: ReturnType<typeof setInterval> | null = null;
+      let hasReceivedProgress = false;
+      
+      const startProgressSimulation = () => {
+        let simulatedProgress = 10;
+        progressInterval = setInterval(() => {
+          if (!hasReceivedProgress && simulatedProgress < 85) {
+            simulatedProgress += Math.random() * 5;
+            setUploadProgress(Math.min(Math.round(simulatedProgress), 85));
+          }
+        }, 300);
+      };
+      
+      const stopProgressSimulation = () => {
+        if (progressInterval) {
+          clearInterval(progressInterval);
+          progressInterval = null;
+        }
+      };
+      
+      // Track upload progress - may not fire on all mobile browsers
       xhr.upload.onprogress = (event) => {
         if (event.lengthComputable) {
+          hasReceivedProgress = true;
           const percent = Math.round((event.loaded / event.total) * 100);
           console.log("Upload progress:", percent + "%");
           setUploadProgress(percent);
@@ -244,6 +266,7 @@ export function UserDepositRequestDialog({
       };
       
       xhr.onload = () => {
+        stopProgressSimulation();
         console.log("XHR onload, status:", xhr.status);
         if (xhr.status >= 200 && xhr.status < 300) {
           console.log("Upload successful");
@@ -262,29 +285,37 @@ export function UserDepositRequestDialog({
       };
       
       xhr.onerror = () => {
+        stopProgressSimulation();
         console.error("XHR onerror - Network error");
         reject(new Error("Network error. Please check your connection and try again."));
       };
       
       xhr.ontimeout = () => {
+        stopProgressSimulation();
         console.error("XHR ontimeout");
         reject(new Error("Upload timed out. Please try with a smaller image."));
       };
       
       xhr.onabort = () => {
+        stopProgressSimulation();
         console.error("XHR onabort");
         reject(new Error("Upload was cancelled."));
       };
       
+      // Use FormData for better mobile browser compatibility
+      const formData = new FormData();
+      formData.append('', file, file.name);
+      
       // Open and send
       xhr.open("POST", url, true);
       xhr.setRequestHeader("Authorization", `Bearer ${activeSession!.access_token}`);
-      xhr.setRequestHeader("Content-Type", file.type || "image/jpeg");
       xhr.setRequestHeader("x-upsert", "true");
+      // Don't set Content-Type - browser will set it with boundary for FormData
       
-      console.log("Sending file...");
+      console.log("Sending file via FormData...");
       setUploadProgress(5);
-      xhr.send(file);
+      startProgressSimulation();
+      xhr.send(formData);
     });
   };
 
