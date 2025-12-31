@@ -200,61 +200,48 @@ export function UserDepositRequestDialog({
     }
   };
 
-  // Upload file using XMLHttpRequest with user's access token for authentication
-  const uploadWithProgress = async (file: File, fileName: string): Promise<void> => {
-    // Get the user's current session token for authentication
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.access_token) {
-      throw new Error("Not authenticated. Please log in again.");
+  // Upload file using Supabase SDK - more reliable on mobile
+  const uploadFile = async (file: File, fileName: string): Promise<void> => {
+    // First, ensure we have a fresh session
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    
+    if (sessionError || !session) {
+      // Try to refresh the session
+      const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+      if (refreshError || !refreshData.session) {
+        throw new Error("Session expired. Please log out and log in again.");
+      }
     }
     
-    return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
+    setUploadProgress(10);
+    
+    // Use Supabase SDK upload - handles auth automatically and is more reliable on mobile
+    const { error: uploadError } = await supabase.storage
+      .from("payment-proofs")
+      .upload(fileName, file, {
+        cacheControl: "3600",
+        upsert: true,
+        contentType: file.type || "image/jpeg",
+      });
+
+    if (uploadError) {
+      console.error("Upload error details:", uploadError);
       
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      // Check for specific error types
+      if (uploadError.message?.includes("JWT") || uploadError.message?.includes("token")) {
+        throw new Error("Authentication expired. Please log out and log in again.");
+      }
+      if (uploadError.message?.includes("policy") || uploadError.message?.includes("permission")) {
+        throw new Error("Permission denied. Please try again.");
+      }
+      if (uploadError.message?.includes("size") || uploadError.message?.includes("large")) {
+        throw new Error("File too large. Please use a smaller image.");
+      }
       
-      xhr.upload.addEventListener("progress", (event) => {
-        if (event.lengthComputable) {
-          const percent = Math.round((event.loaded / event.total) * 100);
-          setUploadProgress(percent);
-        }
-      });
-
-      xhr.addEventListener("load", () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          resolve();
-        } else {
-          console.error("Upload response:", xhr.status, xhr.responseText);
-          reject(new Error(`Upload failed with status ${xhr.status}: ${xhr.responseText || 'Unknown error'}`));
-        }
-      });
-
-      xhr.addEventListener("error", () => {
-        reject(new Error("Network error during upload"));
-      });
-
-      xhr.addEventListener("timeout", () => {
-        reject(new Error("Upload timeout"));
-      });
-
-      xhr.addEventListener("abort", () => {
-        reject(new Error("Upload aborted"));
-      });
-
-      // Set timeout to 2 minutes for slow mobile connections
-      xhr.timeout = 120000;
-
-      // Open connection to Supabase Storage
-      xhr.open("POST", `${supabaseUrl}/storage/v1/object/payment-proofs/${fileName}`);
-      
-      // Use the user's access token for authentication (not the anon key)
-      xhr.setRequestHeader("Authorization", `Bearer ${session.access_token}`);
-      xhr.setRequestHeader("Content-Type", file.type || "image/jpeg");
-      xhr.setRequestHeader("x-upsert", "true");
-      
-      // Send the file
-      xhr.send(file);
-    });
+      throw new Error(uploadError.message || "Upload failed. Please try again.");
+    }
+    
+    setUploadProgress(100);
   };
 
   const handleSubmit = async () => {
@@ -285,8 +272,8 @@ export function UserDepositRequestDialog({
       // Generate file name
       const fileName = `${userId}/${Date.now()}.jpg`;
       
-      // Upload using XMLHttpRequest for real progress
-      await uploadWithProgress(proofFile, fileName);
+      // Upload using Supabase SDK for better mobile reliability
+      await uploadFile(proofFile, fileName);
 
       setUploadProgress(100);
       setUploadStatus("Creating request...");
