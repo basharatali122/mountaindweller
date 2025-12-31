@@ -200,7 +200,7 @@ export function UserDepositRequestDialog({
     }
   };
 
-  // Upload file using FormData + XMLHttpRequest for best mobile compatibility
+  // Upload file using ArrayBuffer + XMLHttpRequest for best mobile compatibility
   const uploadFile = async (file: File, fileName: string): Promise<void> => {
     console.log("Starting upload for:", fileName, "Size:", file.size);
     
@@ -223,6 +223,12 @@ export function UserDepositRequestDialog({
     }
     
     console.log("Session valid, user:", activeSession.user.id);
+    
+    // Convert file to ArrayBuffer first - this is more reliable on mobile
+    const arrayBuffer = await file.arrayBuffer();
+    const blob = new Blob([arrayBuffer], { type: file.type || 'image/jpeg' });
+    
+    console.log("File converted to blob, size:", blob.size);
     
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
@@ -302,20 +308,16 @@ export function UserDepositRequestDialog({
         reject(new Error("Upload was cancelled."));
       };
       
-      // Use FormData for better mobile browser compatibility
-      const formData = new FormData();
-      formData.append('', file, file.name);
-      
-      // Open and send
+      // Open and send with proper headers
       xhr.open("POST", url, true);
       xhr.setRequestHeader("Authorization", `Bearer ${activeSession!.access_token}`);
+      xhr.setRequestHeader("Content-Type", file.type || "image/jpeg");
       xhr.setRequestHeader("x-upsert", "true");
-      // Don't set Content-Type - browser will set it with boundary for FormData
       
-      console.log("Sending file via FormData...");
+      console.log("Sending blob...");
       setUploadProgress(5);
       startProgressSimulation();
-      xhr.send(formData);
+      xhr.send(blob);
     });
   };
 
