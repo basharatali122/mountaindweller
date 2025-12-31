@@ -222,84 +222,91 @@ export function UserDepositRequestDialog({
     }
   };
 
-  // Simple direct upload using Blob (avoids base64 memory issues on mobile)
+  // Upload using fetch API with FormData (most reliable for mobile)
   const uploadFile = async (file: File, fileName: string): Promise<void> => {
-    console.log("Starting simple upload for:", fileName, "Size:", file.size);
+    console.log("Starting fetch upload for:", fileName, "Size:", file.size);
     
     setUploadProgress(5);
     setUploadStatus("Checking session...");
     
-    // Ensure we have a fresh session
+    // Get fresh session
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();
     
-    let activeSession = session;
-    
-    if (sessionError || !session) {
-      console.log("No session, refreshing...");
+    if (sessionError || !session?.access_token) {
       const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
-      if (refreshError || !refreshData.session) {
+      if (refreshError || !refreshData.session?.access_token) {
         throw new Error("Session expired. Please log out and log in again.");
       }
-      activeSession = refreshData.session;
     }
-
+    
+    const { data: { session: activeSession } } = await supabase.auth.getSession();
     if (!activeSession?.access_token) {
       throw new Error("Not authenticated. Please log in again.");
     }
     
-    console.log("Session valid, preparing file...");
     setUploadProgress(15);
-    setUploadStatus("Preparing file...");
+    setUploadStatus("Preparing upload...");
     
-    // Validate file is readable
-    const blob = await readFileWithTimeout(file, 15000);
-    console.log("File validated, size:", blob.size);
+    // Use FormData for upload (most compatible with mobile)
+    const formData = new FormData();
+    formData.append('', file, fileName);
     
-    setUploadProgress(30);
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const uploadUrl = `${supabaseUrl}/storage/v1/object/payment-proofs/${fileName}`;
+    
+    console.log("Uploading to:", uploadUrl);
+    setUploadProgress(25);
     setUploadStatus("Uploading...");
     
-    // Create upload promise with timeout
-    const uploadPromise = supabase.storage
-      .from('payment-proofs')
-      .upload(fileName, blob, {
-        contentType: file.type || 'image/jpeg',
-        upsert: true,
-      });
+    // Create AbortController for timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000);
     
-    // Set up timeout for upload
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => {
-        reject(new Error("Upload timeout - please check your connection and try again"));
-      }, 60000); // 60 second timeout
-    });
-    
-    // Simulate progress while waiting
+    // Simulate progress
     const progressInterval = setInterval(() => {
-      setUploadProgress(prev => {
-        if (prev < 85) return prev + 5;
-        return prev;
-      });
-    }, 1000);
+      setUploadProgress(prev => prev < 85 ? prev + 5 : prev);
+    }, 800);
     
     try {
-      const { data, error } = await Promise.race([uploadPromise, timeoutPromise]);
+      const response = await fetch(uploadUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${activeSession.access_token}`,
+          'x-upsert': 'true',
+        },
+        body: file, // Send file directly, not FormData
+        signal: controller.signal,
+      });
       
+      clearTimeout(timeoutId);
       clearInterval(progressInterval);
-      setUploadProgress(95);
       
-      if (error) {
-        console.error("Supabase upload error:", error);
-        if (error.message?.includes('Payload too large')) {
+      console.log("Upload response status:", response.status);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Upload error response:", errorText);
+        
+        if (response.status === 413) {
           throw new Error("File too large. Please use a smaller image.");
         }
-        throw new Error(error.message || "Upload failed. Please try again.");
+        if (response.status === 401 || response.status === 403) {
+          throw new Error("Session expired. Please log out and log in again.");
+        }
+        throw new Error(`Upload failed (${response.status}). Please try again.`);
       }
       
-      console.log("Upload successful:", data);
       setUploadProgress(100);
       setUploadStatus("Done!");
-    } catch (err) {
+      console.log("Upload successful!");
+      
+    } catch (err: any) {
+      clearTimeout(timeoutId);
       clearInterval(progressInterval);
+      
+      if (err.name === 'AbortError') {
+        throw new Error("Upload timed out. Please check your connection and try again.");
+      }
       throw err;
     }
   };
