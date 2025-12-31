@@ -96,32 +96,29 @@ const compressImage = async (
   });
 };
 
-// Read file as Base64 using FileReader (most reliable across all mobile browsers)
-const readFileAsBase64 = (file: File): Promise<string> => {
+// Read file as Blob with timeout (most reliable for mobile)
+const readFileWithTimeout = async (file: File, timeoutMs: number = 30000): Promise<Blob> => {
   return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        const base64 = reader.result.split(',')[1];
-        resolve(base64);
+    const timeout = setTimeout(() => {
+      reject(new Error("File reading timeout - please try again"));
+    }, timeoutMs);
+    
+    // Just use the file directly as a Blob - no conversion needed
+    try {
+      // Verify the file is readable by slicing it
+      const testSlice = file.slice(0, 1);
+      if (testSlice.size > 0 || file.size === 0) {
+        clearTimeout(timeout);
+        resolve(file);
       } else {
-        reject(new Error("Failed to read file as base64"));
+        clearTimeout(timeout);
+        reject(new Error("Could not read file"));
       }
-    };
-    reader.onerror = () => reject(new Error("Failed to read file"));
-    reader.onabort = () => reject(new Error("File reading aborted"));
-    reader.readAsDataURL(file);
+    } catch (err) {
+      clearTimeout(timeout);
+      reject(err);
+    }
   });
-};
-
-// Decode base64 to ArrayBuffer (for Supabase upload)
-const decode = (base64: string): ArrayBuffer => {
-  const binaryString = atob(base64);
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
-  return bytes.buffer;
 };
 
 // Format file size for display
@@ -225,9 +222,12 @@ export function UserDepositRequestDialog({
     }
   };
 
-  // Upload using base64 + Supabase SDK (proven to work on mobile)
+  // Simple direct upload using Blob (avoids base64 memory issues on mobile)
   const uploadFile = async (file: File, fileName: string): Promise<void> => {
-    console.log("Starting mobile-optimized upload for:", fileName, "Size:", file.size);
+    console.log("Starting simple upload for:", fileName, "Size:", file.size);
+    
+    setUploadProgress(5);
+    setUploadStatus("Checking session...");
     
     // Ensure we have a fresh session
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();
@@ -247,40 +247,61 @@ export function UserDepositRequestDialog({
       throw new Error("Not authenticated. Please log in again.");
     }
     
-    console.log("Session valid, reading file as base64...");
-    setUploadProgress(10);
+    console.log("Session valid, preparing file...");
+    setUploadProgress(15);
+    setUploadStatus("Preparing file...");
     
-    // Read file as base64 (most reliable on mobile)
-    const base64 = await readFileAsBase64(file);
-    console.log("Base64 length:", base64.length);
+    // Validate file is readable
+    const blob = await readFileWithTimeout(file, 15000);
+    console.log("File validated, size:", blob.size);
+    
     setUploadProgress(30);
+    setUploadStatus("Uploading...");
     
-    // Decode to ArrayBuffer
-    const arrayBuffer = decode(base64);
-    console.log("ArrayBuffer size:", arrayBuffer.byteLength);
-    setUploadProgress(50);
-    
-    // Upload using Supabase SDK with ArrayBuffer
-    console.log("Uploading to Supabase storage...");
-    const { data, error } = await supabase.storage
+    // Create upload promise with timeout
+    const uploadPromise = supabase.storage
       .from('payment-proofs')
-      .upload(fileName, arrayBuffer, {
-        contentType: 'image/jpeg',
+      .upload(fileName, blob, {
+        contentType: file.type || 'image/jpeg',
         upsert: true,
       });
     
-    setUploadProgress(90);
+    // Set up timeout for upload
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => {
+        reject(new Error("Upload timeout - please check your connection and try again"));
+      }, 60000); // 60 second timeout
+    });
     
-    if (error) {
-      console.error("Supabase upload error:", error);
-      if (error.message?.includes('Payload too large')) {
-        throw new Error("File too large. Please use a smaller image.");
+    // Simulate progress while waiting
+    const progressInterval = setInterval(() => {
+      setUploadProgress(prev => {
+        if (prev < 85) return prev + 5;
+        return prev;
+      });
+    }, 1000);
+    
+    try {
+      const { data, error } = await Promise.race([uploadPromise, timeoutPromise]);
+      
+      clearInterval(progressInterval);
+      setUploadProgress(95);
+      
+      if (error) {
+        console.error("Supabase upload error:", error);
+        if (error.message?.includes('Payload too large')) {
+          throw new Error("File too large. Please use a smaller image.");
+        }
+        throw new Error(error.message || "Upload failed. Please try again.");
       }
-      throw new Error(error.message || "Upload failed. Please try again.");
+      
+      console.log("Upload successful:", data);
+      setUploadProgress(100);
+      setUploadStatus("Done!");
+    } catch (err) {
+      clearInterval(progressInterval);
+      throw err;
     }
-    
-    console.log("Upload successful:", data);
-    setUploadProgress(100);
   };
 
   const handleSubmit = async () => {
