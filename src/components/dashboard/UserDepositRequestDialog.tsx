@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Upload, Wallet, Copy, CheckCircle, ImageIcon } from "lucide-react";
+import { Loader2, Upload, Wallet, Copy, CheckCircle, ImageIcon, RefreshCw } from "lucide-react";
 
 interface UserDepositRequestDialogProps {
   userId: string;
@@ -146,6 +146,7 @@ export function UserDepositRequestDialog({
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadStatus, setUploadStatus] = useState<string>("");
   const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [uploadFailed, setUploadFailed] = useState(false);
 
   const copyToClipboard = (text: string, field: string) => {
     navigator.clipboard.writeText(text);
@@ -305,6 +306,7 @@ export function UserDepositRequestDialog({
     setIsLoading(true);
     setUploadProgress(0);
     setUploadStatus("Uploading...");
+    setUploadFailed(false);
 
     try {
       const fileName = `${userId}/${Date.now()}.jpg`;
@@ -342,6 +344,7 @@ export function UserDepositRequestDialog({
       onSuccess?.();
     } catch (error: any) {
       console.error("Deposit request error:", error);
+      setUploadFailed(true);
       
       let errorMessage = "Could not submit deposit request. Please try again.";
       if (error.message?.includes("Session") || error.message?.includes("authenticated")) {
@@ -562,7 +565,17 @@ export function UserDepositRequestDialog({
           )}
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="flex-col gap-2 sm:flex-col">
+          {uploadFailed && proofFile && !isLoading && (
+            <Button
+              onClick={handleSubmit}
+              variant="outline"
+              className="w-full border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground"
+            >
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Retry Upload
+            </Button>
+          )}
           <Button
             onClick={handleSubmit}
             disabled={isLoading || isCompressing || !proofFile}
@@ -578,6 +591,8 @@ export function UserDepositRequestDialog({
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                 Optimizing...
               </>
+            ) : uploadFailed ? (
+              "Submit Request"
             ) : (
               "Submit Request"
             )}
