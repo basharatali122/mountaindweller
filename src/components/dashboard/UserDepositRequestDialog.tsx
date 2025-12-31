@@ -30,26 +30,23 @@ const BANK_DETAILS = {
 };
 
 // Compress image to reduce file size for faster mobile uploads
-// Uses smaller dimensions for mobile to ensure fast uploads
 const compressImage = async (
   file: File,
-  maxWidth = 1200,
-  maxHeight = 1200,
-  quality = 0.7
+  maxWidth = 1000,
+  maxHeight = 1000,
+  quality = 0.5
 ): Promise<File> => {
   return new Promise((resolve, reject) => {
     const img = new Image();
     const objectUrl = URL.createObjectURL(file);
     
     img.onload = () => {
-      // Clean up object URL after image loads
       URL.revokeObjectURL(objectUrl);
       
       try {
         const canvas = document.createElement("canvas");
         let { width, height } = img;
 
-        // Scale down if needed while maintaining aspect ratio
         if (width > maxWidth || height > maxHeight) {
           const ratio = Math.min(maxWidth / width, maxHeight / height);
           width = Math.round(width * ratio);
@@ -65,7 +62,6 @@ const compressImage = async (
           return;
         }
         
-        // Draw image with white background (for transparent images)
         ctx.fillStyle = "#FFFFFF";
         ctx.fillRect(0, 0, width, height);
         ctx.drawImage(img, 0, 0, width, height);
@@ -73,7 +69,6 @@ const compressImage = async (
         canvas.toBlob(
           (blob) => {
             if (blob) {
-              // Create new file with .jpg extension
               const compressedFile = new File(
                 [blob],
                 file.name.replace(/\.[^.]+$/, ".jpg"),
@@ -101,21 +96,32 @@ const compressImage = async (
   });
 };
 
-// Read file as ArrayBuffer using FileReader (better mobile compatibility)
-const readFileAsArrayBuffer = (file: File): Promise<ArrayBuffer> => {
+// Read file as Base64 using FileReader (most reliable across all mobile browsers)
+const readFileAsBase64 = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
-      if (reader.result instanceof ArrayBuffer) {
-        resolve(reader.result);
+      if (typeof reader.result === 'string') {
+        const base64 = reader.result.split(',')[1];
+        resolve(base64);
       } else {
-        reject(new Error("Failed to read file"));
+        reject(new Error("Failed to read file as base64"));
       }
     };
     reader.onerror = () => reject(new Error("Failed to read file"));
     reader.onabort = () => reject(new Error("File reading aborted"));
-    reader.readAsArrayBuffer(file);
+    reader.readAsDataURL(file);
   });
+};
+
+// Decode base64 to ArrayBuffer (for Supabase upload)
+const decode = (base64: string): ArrayBuffer => {
+  const binaryString = atob(base64);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes.buffer;
 };
 
 // Format file size for display
@@ -151,7 +157,6 @@ export function UserDepositRequestDialog({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Check if it's an image
     if (!file.type.startsWith("image/")) {
       toast({
         title: "Invalid file type",
@@ -161,7 +166,6 @@ export function UserDepositRequestDialog({
       return;
     }
 
-    // Warn if file is very large (over 15MB - might be too large even for compression)
     if (file.size > 15 * 1024 * 1024) {
       toast({
         title: "File too large",
@@ -173,19 +177,18 @@ export function UserDepositRequestDialog({
 
     setOriginalSize(file.size);
     
-    // Always compress images for faster mobile uploads
+    // Always compress images for mobile reliability
     if (file.size > 300 * 1024) {
       setIsCompressing(true);
       try {
-        // More aggressive compression for mobile - smaller dimensions, lower quality
-        let quality = 0.6;
-        let maxDim = 1200;
+        let quality = 0.5;
+        let maxDim = 1000;
         if (file.size > 5 * 1024 * 1024) {
-          quality = 0.5;
-          maxDim = 1000;
+          quality = 0.4;
+          maxDim = 800;
         } else if (file.size > 2 * 1024 * 1024) {
-          quality = 0.55;
-          maxDim = 1100;
+          quality = 0.45;
+          maxDim = 900;
         }
 
         const compressedFile = await compressImage(file, maxDim, maxDim, quality);
@@ -200,7 +203,6 @@ export function UserDepositRequestDialog({
         }
       } catch (error) {
         console.error("Compression error:", error);
-        // Fall back to original file if compression fails
         if (file.size <= 2 * 1024 * 1024) {
           setProofFile(file);
           toast({
@@ -218,16 +220,15 @@ export function UserDepositRequestDialog({
         setIsCompressing(false);
       }
     } else {
-      // File is already small enough
       setProofFile(file);
     }
   };
 
-  // Upload file using ArrayBuffer + XMLHttpRequest for best mobile compatibility
+  // Upload using base64 + Supabase SDK (proven to work on mobile)
   const uploadFile = async (file: File, fileName: string): Promise<void> => {
-    console.log("Starting upload for:", fileName, "Size:", file.size);
+    console.log("Starting mobile-optimized upload for:", fileName, "Size:", file.size);
     
-    // First, ensure we have a fresh session
+    // Ensure we have a fresh session
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();
     
     let activeSession = session;
@@ -245,104 +246,40 @@ export function UserDepositRequestDialog({
       throw new Error("Not authenticated. Please log in again.");
     }
     
-    console.log("Session valid, user:", activeSession.user.id);
+    console.log("Session valid, reading file as base64...");
+    setUploadProgress(10);
     
-    // Use FileReader to read file (more reliable on mobile than file.arrayBuffer())
-    console.log("Reading file with FileReader...");
-    const arrayBuffer = await readFileAsArrayBuffer(file);
-    const blob = new Blob([arrayBuffer], { type: file.type || 'image/jpeg' });
+    // Read file as base64 (most reliable on mobile)
+    const base64 = await readFileAsBase64(file);
+    console.log("Base64 length:", base64.length);
+    setUploadProgress(30);
     
-    console.log("File converted to blob, size:", blob.size);
+    // Decode to ArrayBuffer
+    const arrayBuffer = decode(base64);
+    console.log("ArrayBuffer size:", arrayBuffer.byteLength);
+    setUploadProgress(50);
     
-    return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const url = `${supabaseUrl}/storage/v1/object/payment-proofs/${fileName}`;
-      
-      console.log("Upload URL:", url);
-      
-      // Set timeout to 90 seconds
-      xhr.timeout = 90000;
-      
-      // Start a progress simulation for mobile browsers that don't fire progress events
-      let progressInterval: ReturnType<typeof setInterval> | null = null;
-      let hasReceivedProgress = false;
-      
-      const startProgressSimulation = () => {
-        let simulatedProgress = 10;
-        progressInterval = setInterval(() => {
-          if (!hasReceivedProgress && simulatedProgress < 85) {
-            simulatedProgress += Math.random() * 5;
-            setUploadProgress(Math.min(Math.round(simulatedProgress), 85));
-          }
-        }, 300);
-      };
-      
-      const stopProgressSimulation = () => {
-        if (progressInterval) {
-          clearInterval(progressInterval);
-          progressInterval = null;
-        }
-      };
-      
-      // Track upload progress - may not fire on all mobile browsers
-      xhr.upload.onprogress = (event) => {
-        if (event.lengthComputable) {
-          hasReceivedProgress = true;
-          const percent = Math.round((event.loaded / event.total) * 100);
-          console.log("Upload progress:", percent + "%");
-          setUploadProgress(percent);
-        }
-      };
-      
-      xhr.onload = () => {
-        stopProgressSimulation();
-        console.log("XHR onload, status:", xhr.status);
-        if (xhr.status >= 200 && xhr.status < 300) {
-          console.log("Upload successful");
-          setUploadProgress(100);
-          resolve();
-        } else {
-          console.error("Upload failed with status:", xhr.status, xhr.responseText);
-          if (xhr.status === 401 || xhr.status === 403) {
-            reject(new Error("Authentication expired. Please log out and log in again."));
-          } else if (xhr.status === 413) {
-            reject(new Error("File too large. Please use a smaller image."));
-          } else {
-            reject(new Error(`Upload failed (${xhr.status}). Please try again.`));
-          }
-        }
-      };
-      
-      xhr.onerror = () => {
-        stopProgressSimulation();
-        console.error("XHR onerror - Network error");
-        reject(new Error("Network error. Please check your connection and try again."));
-      };
-      
-      xhr.ontimeout = () => {
-        stopProgressSimulation();
-        console.error("XHR ontimeout");
-        reject(new Error("Upload timed out. Please try with a smaller image."));
-      };
-      
-      xhr.onabort = () => {
-        stopProgressSimulation();
-        console.error("XHR onabort");
-        reject(new Error("Upload was cancelled."));
-      };
-      
-      // Open and send with proper headers
-      xhr.open("POST", url, true);
-      xhr.setRequestHeader("Authorization", `Bearer ${activeSession!.access_token}`);
-      xhr.setRequestHeader("Content-Type", file.type || "image/jpeg");
-      xhr.setRequestHeader("x-upsert", "true");
-      
-      console.log("Sending blob...");
-      setUploadProgress(5);
-      startProgressSimulation();
-      xhr.send(blob);
-    });
+    // Upload using Supabase SDK with ArrayBuffer
+    console.log("Uploading to Supabase storage...");
+    const { data, error } = await supabase.storage
+      .from('payment-proofs')
+      .upload(fileName, arrayBuffer, {
+        contentType: 'image/jpeg',
+        upsert: true,
+      });
+    
+    setUploadProgress(90);
+    
+    if (error) {
+      console.error("Supabase upload error:", error);
+      if (error.message?.includes('Payload too large')) {
+        throw new Error("File too large. Please use a smaller image.");
+      }
+      throw new Error(error.message || "Upload failed. Please try again.");
+    }
+    
+    console.log("Upload successful:", data);
+    setUploadProgress(100);
   };
 
   const handleSubmit = async () => {
@@ -370,19 +307,15 @@ export function UserDepositRequestDialog({
     setUploadStatus("Uploading...");
 
     try {
-      // Generate file name
       const fileName = `${userId}/${Date.now()}.jpg`;
       
-      // Upload using Supabase SDK for better mobile reliability
       await uploadFile(proofFile, fileName);
 
       setUploadProgress(100);
       setUploadStatus("Creating request...");
 
-      // Store just the file path
       const paymentProofPath = fileName;
 
-      // Create deposit request
       const { error: insertError } = await supabase
         .from("deposit_requests")
         .insert({
@@ -399,7 +332,6 @@ export function UserDepositRequestDialog({
         description: "Your deposit request is being reviewed. You'll be notified once approved.",
       });
 
-      // Reset form
       setAmount("");
       setBankReference("");
       setProofFile(null);
@@ -412,12 +344,10 @@ export function UserDepositRequestDialog({
       console.error("Deposit request error:", error);
       
       let errorMessage = "Could not submit deposit request. Please try again.";
-      if (error.message?.includes("timeout")) {
-        errorMessage = "Upload timed out. Please check your internet connection and try again.";
-      } else if (error.message?.includes("network") || error.message?.includes("Network")) {
-        errorMessage = "Network error. Please check your connection and try again.";
-      } else if (error.message?.includes("status")) {
-        errorMessage = "Upload failed. Please try again.";
+      if (error.message?.includes("Session") || error.message?.includes("authenticated")) {
+        errorMessage = "Session expired. Please log out and log in again.";
+      } else if (error.message?.includes("large")) {
+        errorMessage = "Image too large. Please try a smaller image.";
       }
       
       toast({
@@ -515,7 +445,7 @@ export function UserDepositRequestDialog({
                   </Button>
                 </div>
               </div>
-
+              
               <div className="flex justify-between items-center">
                 <span className="text-muted-foreground">Till Number:</span>
                 <div className="flex items-center gap-2">
@@ -546,68 +476,77 @@ export function UserDepositRequestDialog({
               placeholder="Enter amount (min. 1,000)"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              min="1000"
+              disabled={isLoading}
             />
           </div>
 
           {/* Bank Reference */}
           <div className="space-y-2">
-            <Label htmlFor="reference">Transaction Reference (Optional)</Label>
+            <Label htmlFor="reference">Bank Reference (Optional)</Label>
             <Input
               id="reference"
-              placeholder="Bank transaction ID or reference number"
+              placeholder="Transaction ID or reference number"
               value={bankReference}
               onChange={(e) => setBankReference(e.target.value)}
+              disabled={isLoading}
             />
           </div>
 
           {/* Payment Proof Upload */}
           <div className="space-y-2">
-            <Label htmlFor="proof">Payment Screenshot *</Label>
-            <div className="border-2 border-dashed border-border rounded-xl p-4 text-center">
-              <input
-                id="proof"
-                type="file"
-                accept="image/*"
-                onChange={handleFileChange}
-                className="hidden"
-                disabled={isCompressing}
-              />
-              <label
-                htmlFor="proof"
-                className={`cursor-pointer flex flex-col items-center gap-2 ${isCompressing ? "pointer-events-none opacity-50" : ""}`}
-              >
-                {isCompressing ? (
-                  <>
-                    <Loader2 className="w-8 h-8 text-muted-foreground animate-spin" />
-                    <span className="text-sm text-muted-foreground">
-                      Optimizing image...
-                    </span>
-                  </>
-                ) : proofFile ? (
-                  <>
-                    <ImageIcon className="w-8 h-8 text-primary" />
-                    <span className="text-sm text-foreground font-medium">
-                      {proofFile.name}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      {formatFileSize(proofFile.size)}
-                      {originalSize > proofFile.size && (
-                        <span className="text-green-600 ml-1">
-                          (optimized from {formatFileSize(originalSize)})
-                        </span>
-                      )}
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <Upload className="w-8 h-8 text-muted-foreground" />
-                    <span className="text-sm text-muted-foreground">
-                      Tap to upload or take photo
-                    </span>
-                  </>
-                )}
-              </label>
+            <Label>Payment Proof</Label>
+            <div className="border-2 border-dashed border-border rounded-xl p-6 text-center">
+              {proofFile ? (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-center gap-2 text-primary">
+                    <ImageIcon className="w-5 h-5" />
+                    <span className="font-medium">{proofFile.name}</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Size: {formatFileSize(proofFile.size)}
+                    {originalSize > proofFile.size && (
+                      <span className="text-green-500 ml-1">
+                        (saved {Math.round((1 - proofFile.size / originalSize) * 100)}%)
+                      </span>
+                    )}
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setProofFile(null);
+                      setOriginalSize(0);
+                    }}
+                    disabled={isLoading}
+                  >
+                    Change Image
+                  </Button>
+                </div>
+              ) : isCompressing ? (
+                <div className="space-y-2">
+                  <Loader2 className="w-8 h-8 mx-auto animate-spin text-primary" />
+                  <p className="text-sm text-muted-foreground">Optimizing image...</p>
+                </div>
+              ) : (
+                <label className="cursor-pointer block">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleFileChange}
+                    disabled={isLoading}
+                  />
+                  <div className="space-y-2">
+                    <Upload className="w-8 h-8 mx-auto text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground">
+                      Tap to upload payment screenshot
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Supports JPG, PNG (max 15MB)
+                    </p>
+                  </div>
+                </label>
+              )}
             </div>
           </div>
 
@@ -615,8 +554,8 @@ export function UserDepositRequestDialog({
           {isLoading && uploadProgress > 0 && (
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">{uploadStatus}</span>
-                <span className="font-medium">{uploadProgress}%</span>
+                <span>{uploadStatus}</span>
+                <span>{uploadProgress}%</span>
               </div>
               <Progress value={uploadProgress} className="h-2" />
             </div>
@@ -624,12 +563,10 @@ export function UserDepositRequestDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)} disabled={isLoading}>
-            Cancel
-          </Button>
           <Button
             onClick={handleSubmit}
-            disabled={isLoading || isCompressing || !amount || !proofFile}
+            disabled={isLoading || isCompressing || !proofFile}
+            className="w-full"
           >
             {isLoading ? (
               <>
