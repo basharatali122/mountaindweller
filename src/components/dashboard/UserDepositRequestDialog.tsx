@@ -200,10 +200,12 @@ export function UserDepositRequestDialog({
     }
   };
 
-  // Upload file using Supabase SDK - more reliable on mobile
+  // Upload file using fetch with timeout for mobile reliability
   const uploadFile = async (file: File, fileName: string): Promise<void> => {
     // First, ensure we have a fresh session
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    
+    let activeSession = session;
     
     if (sessionError || !session) {
       // Try to refresh the session
@@ -211,37 +213,67 @@ export function UserDepositRequestDialog({
       if (refreshError || !refreshData.session) {
         throw new Error("Session expired. Please log out and log in again.");
       }
+      activeSession = refreshData.session;
     }
-    
-    setUploadProgress(10);
-    
-    // Use Supabase SDK upload - handles auth automatically and is more reliable on mobile
-    const { error: uploadError } = await supabase.storage
-      .from("payment-proofs")
-      .upload(fileName, file, {
-        cacheControl: "3600",
-        upsert: true,
-        contentType: file.type || "image/jpeg",
-      });
 
-    if (uploadError) {
-      console.error("Upload error details:", uploadError);
-      
-      // Check for specific error types
-      if (uploadError.message?.includes("JWT") || uploadError.message?.includes("token")) {
-        throw new Error("Authentication expired. Please log out and log in again.");
-      }
-      if (uploadError.message?.includes("policy") || uploadError.message?.includes("permission")) {
-        throw new Error("Permission denied. Please try again.");
-      }
-      if (uploadError.message?.includes("size") || uploadError.message?.includes("large")) {
-        throw new Error("File too large. Please use a smaller image.");
-      }
-      
-      throw new Error(uploadError.message || "Upload failed. Please try again.");
+    if (!activeSession?.access_token) {
+      throw new Error("Not authenticated. Please log in again.");
     }
     
-    setUploadProgress(100);
+    // Simulate progress for better UX
+    setUploadProgress(10);
+    const progressInterval = setInterval(() => {
+      setUploadProgress(prev => Math.min(prev + 5, 85));
+    }, 500);
+    
+    try {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      
+      // Create abort controller for timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
+      
+      // Use fetch API with the user's access token
+      const response = await fetch(
+        `${supabaseUrl}/storage/v1/object/payment-proofs/${fileName}`,
+        {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${activeSession.access_token}`,
+            "Content-Type": file.type || "image/jpeg",
+            "x-upsert": "true",
+          },
+          body: file,
+          signal: controller.signal,
+        }
+      );
+      
+      clearTimeout(timeoutId);
+      clearInterval(progressInterval);
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => "Unknown error");
+        console.error("Upload failed:", response.status, errorText);
+        
+        if (response.status === 401 || response.status === 403) {
+          throw new Error("Authentication expired. Please log out and log in again.");
+        }
+        if (response.status === 413) {
+          throw new Error("File too large. Please use a smaller image.");
+        }
+        
+        throw new Error(`Upload failed (${response.status}). Please try again.`);
+      }
+      
+      setUploadProgress(100);
+    } catch (error: any) {
+      clearInterval(progressInterval);
+      
+      if (error.name === "AbortError") {
+        throw new Error("Upload timed out. Please check your connection and try again.");
+      }
+      throw error;
+    }
   };
 
   const handleSubmit = async () => {
