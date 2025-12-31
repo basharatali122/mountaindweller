@@ -200,15 +200,17 @@ export function UserDepositRequestDialog({
     }
   };
 
-  // Upload file using fetch with timeout for mobile reliability
+  // Upload file using FormData for better mobile compatibility
   const uploadFile = async (file: File, fileName: string): Promise<void> => {
+    console.log("Starting upload for:", fileName, "Size:", file.size);
+    
     // First, ensure we have a fresh session
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();
     
     let activeSession = session;
     
     if (sessionError || !session) {
-      // Try to refresh the session
+      console.log("No session, refreshing...");
       const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
       if (refreshError || !refreshData.session) {
         throw new Error("Session expired. Please log out and log in again.");
@@ -220,6 +222,8 @@ export function UserDepositRequestDialog({
       throw new Error("Not authenticated. Please log in again.");
     }
     
+    console.log("Session valid, starting upload...");
+    
     // Simulate progress for better UX
     setUploadProgress(10);
     const progressInterval = setInterval(() => {
@@ -227,51 +231,48 @@ export function UserDepositRequestDialog({
     }, 500);
     
     try {
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      
-      // Create abort controller for timeout
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
-      
-      // Use fetch API with the user's access token
-      const response = await fetch(
-        `${supabaseUrl}/storage/v1/object/payment-proofs/${fileName}`,
-        {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${activeSession.access_token}`,
-            "Content-Type": file.type || "image/jpeg",
-            "x-upsert": "true",
-          },
-          body: file,
-          signal: controller.signal,
-        }
-      );
-      
-      clearTimeout(timeoutId);
+      // Use Supabase SDK - most reliable method
+      const { data, error: uploadError } = await supabase.storage
+        .from("payment-proofs")
+        .upload(fileName, file, {
+          cacheControl: "3600",
+          upsert: true,
+          contentType: file.type || "image/jpeg",
+        });
+
       clearInterval(progressInterval);
 
-      if (!response.ok) {
-        const errorText = await response.text().catch(() => "Unknown error");
-        console.error("Upload failed:", response.status, errorText);
+      if (uploadError) {
+        console.error("Supabase SDK upload error:", uploadError);
         
-        if (response.status === 401 || response.status === 403) {
+        // Check for specific error types
+        if (uploadError.message?.includes("JWT") || uploadError.message?.includes("token") || uploadError.message?.includes("401")) {
           throw new Error("Authentication expired. Please log out and log in again.");
         }
-        if (response.status === 413) {
+        if (uploadError.message?.includes("policy") || uploadError.message?.includes("permission") || uploadError.message?.includes("403")) {
+          throw new Error("Permission denied. Please try logging out and in again.");
+        }
+        if (uploadError.message?.includes("size") || uploadError.message?.includes("large") || uploadError.message?.includes("413")) {
           throw new Error("File too large. Please use a smaller image.");
         }
         
-        throw new Error(`Upload failed (${response.status}). Please try again.`);
+        throw new Error(uploadError.message || "Upload failed. Please try again.");
       }
       
+      console.log("Upload successful:", data);
       setUploadProgress(100);
     } catch (error: any) {
       clearInterval(progressInterval);
+      console.error("Upload error:", error);
       
-      if (error.name === "AbortError") {
-        throw new Error("Upload timed out. Please check your connection and try again.");
+      // Check for network/timeout errors
+      if (error.message?.includes("Failed to fetch") || error.message?.includes("NetworkError")) {
+        throw new Error("Network error. Please check your internet connection and try again.");
       }
+      if (error.message?.includes("timeout") || error.message?.includes("Timeout")) {
+        throw new Error("Upload timed out. Please try again with a smaller image.");
+      }
+      
       throw error;
     }
   };
