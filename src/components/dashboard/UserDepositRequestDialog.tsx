@@ -200,7 +200,7 @@ export function UserDepositRequestDialog({
     }
   };
 
-  // Upload file using FormData for better mobile compatibility
+  // Upload file using XMLHttpRequest for best mobile compatibility
   const uploadFile = async (file: File, fileName: string): Promise<void> => {
     console.log("Starting upload for:", fileName, "Size:", file.size);
     
@@ -222,59 +222,70 @@ export function UserDepositRequestDialog({
       throw new Error("Not authenticated. Please log in again.");
     }
     
-    console.log("Session valid, starting upload...");
+    console.log("Session valid, user:", activeSession.user.id);
     
-    // Simulate progress for better UX
-    setUploadProgress(10);
-    const progressInterval = setInterval(() => {
-      setUploadProgress(prev => Math.min(prev + 5, 85));
-    }, 500);
-    
-    try {
-      // Use Supabase SDK - most reliable method
-      const { data, error: uploadError } = await supabase.storage
-        .from("payment-proofs")
-        .upload(fileName, file, {
-          cacheControl: "3600",
-          upsert: true,
-          contentType: file.type || "image/jpeg",
-        });
-
-      clearInterval(progressInterval);
-
-      if (uploadError) {
-        console.error("Supabase SDK upload error:", uploadError);
-        
-        // Check for specific error types
-        if (uploadError.message?.includes("JWT") || uploadError.message?.includes("token") || uploadError.message?.includes("401")) {
-          throw new Error("Authentication expired. Please log out and log in again.");
-        }
-        if (uploadError.message?.includes("policy") || uploadError.message?.includes("permission") || uploadError.message?.includes("403")) {
-          throw new Error("Permission denied. Please try logging out and in again.");
-        }
-        if (uploadError.message?.includes("size") || uploadError.message?.includes("large") || uploadError.message?.includes("413")) {
-          throw new Error("File too large. Please use a smaller image.");
-        }
-        
-        throw new Error(uploadError.message || "Upload failed. Please try again.");
-      }
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const url = `${supabaseUrl}/storage/v1/object/payment-proofs/${fileName}`;
       
-      console.log("Upload successful:", data);
-      setUploadProgress(100);
-    } catch (error: any) {
-      clearInterval(progressInterval);
-      console.error("Upload error:", error);
+      console.log("Upload URL:", url);
       
-      // Check for network/timeout errors
-      if (error.message?.includes("Failed to fetch") || error.message?.includes("NetworkError")) {
-        throw new Error("Network error. Please check your internet connection and try again.");
-      }
-      if (error.message?.includes("timeout") || error.message?.includes("Timeout")) {
-        throw new Error("Upload timed out. Please try again with a smaller image.");
-      }
+      // Set timeout to 90 seconds
+      xhr.timeout = 90000;
       
-      throw error;
-    }
+      // Track upload progress
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) {
+          const percent = Math.round((event.loaded / event.total) * 100);
+          console.log("Upload progress:", percent + "%");
+          setUploadProgress(percent);
+        }
+      };
+      
+      xhr.onload = () => {
+        console.log("XHR onload, status:", xhr.status);
+        if (xhr.status >= 200 && xhr.status < 300) {
+          console.log("Upload successful");
+          setUploadProgress(100);
+          resolve();
+        } else {
+          console.error("Upload failed with status:", xhr.status, xhr.responseText);
+          if (xhr.status === 401 || xhr.status === 403) {
+            reject(new Error("Authentication expired. Please log out and log in again."));
+          } else if (xhr.status === 413) {
+            reject(new Error("File too large. Please use a smaller image."));
+          } else {
+            reject(new Error(`Upload failed (${xhr.status}). Please try again.`));
+          }
+        }
+      };
+      
+      xhr.onerror = () => {
+        console.error("XHR onerror - Network error");
+        reject(new Error("Network error. Please check your connection and try again."));
+      };
+      
+      xhr.ontimeout = () => {
+        console.error("XHR ontimeout");
+        reject(new Error("Upload timed out. Please try with a smaller image."));
+      };
+      
+      xhr.onabort = () => {
+        console.error("XHR onabort");
+        reject(new Error("Upload was cancelled."));
+      };
+      
+      // Open and send
+      xhr.open("POST", url, true);
+      xhr.setRequestHeader("Authorization", `Bearer ${activeSession!.access_token}`);
+      xhr.setRequestHeader("Content-Type", file.type || "image/jpeg");
+      xhr.setRequestHeader("x-upsert", "true");
+      
+      console.log("Sending file...");
+      setUploadProgress(5);
+      xhr.send(file);
+    });
   };
 
   const handleSubmit = async () => {
