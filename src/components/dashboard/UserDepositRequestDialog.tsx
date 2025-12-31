@@ -30,12 +30,12 @@ const BANK_DETAILS = {
 };
 
 // Compress image to reduce file size for faster mobile uploads
-// Uses createObjectURL instead of FileReader for better mobile compatibility
+// Uses smaller dimensions for mobile to ensure fast uploads
 const compressImage = async (
   file: File,
-  maxWidth = 1920,
-  maxHeight = 1920,
-  quality = 0.8
+  maxWidth = 1200,
+  maxHeight = 1200,
+  quality = 0.7
 ): Promise<File> => {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -101,6 +101,23 @@ const compressImage = async (
   });
 };
 
+// Read file as ArrayBuffer using FileReader (better mobile compatibility)
+const readFileAsArrayBuffer = (file: File): Promise<ArrayBuffer> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (reader.result instanceof ArrayBuffer) {
+        resolve(reader.result);
+      } else {
+        reject(new Error("Failed to read file"));
+      }
+    };
+    reader.onerror = () => reject(new Error("Failed to read file"));
+    reader.onabort = () => reject(new Error("File reading aborted"));
+    reader.readAsArrayBuffer(file);
+  });
+};
+
 // Format file size for display
 const formatFileSize = (bytes: number): string => {
   if (bytes < 1024) return `${bytes} B`;
@@ -156,16 +173,22 @@ export function UserDepositRequestDialog({
 
     setOriginalSize(file.size);
     
-    // Compress if file is larger than 500KB
-    if (file.size > 500 * 1024) {
+    // Always compress images for faster mobile uploads
+    if (file.size > 300 * 1024) {
       setIsCompressing(true);
       try {
-        // Adjust quality based on original size
-        let quality = 0.8;
-        if (file.size > 5 * 1024 * 1024) quality = 0.6;
-        else if (file.size > 2 * 1024 * 1024) quality = 0.7;
+        // More aggressive compression for mobile - smaller dimensions, lower quality
+        let quality = 0.6;
+        let maxDim = 1200;
+        if (file.size > 5 * 1024 * 1024) {
+          quality = 0.5;
+          maxDim = 1000;
+        } else if (file.size > 2 * 1024 * 1024) {
+          quality = 0.55;
+          maxDim = 1100;
+        }
 
-        const compressedFile = await compressImage(file, 1920, 1920, quality);
+        const compressedFile = await compressImage(file, maxDim, maxDim, quality);
         setProofFile(compressedFile);
         
         const savedPercent = Math.round((1 - compressedFile.size / file.size) * 100);
@@ -224,8 +247,9 @@ export function UserDepositRequestDialog({
     
     console.log("Session valid, user:", activeSession.user.id);
     
-    // Convert file to ArrayBuffer first - this is more reliable on mobile
-    const arrayBuffer = await file.arrayBuffer();
+    // Use FileReader to read file (more reliable on mobile than file.arrayBuffer())
+    console.log("Reading file with FileReader...");
+    const arrayBuffer = await readFileAsArrayBuffer(file);
     const blob = new Blob([arrayBuffer], { type: file.type || 'image/jpeg' });
     
     console.log("File converted to blob, size:", blob.size);
