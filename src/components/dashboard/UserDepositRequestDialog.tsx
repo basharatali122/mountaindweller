@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import {
   Dialog,
   DialogContent,
@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Upload, Wallet, Copy, CheckCircle, ImageIcon, RefreshCw } from "lucide-react";
+import { Loader2, Upload, Wallet, Copy, CheckCircle, ImageIcon, RefreshCw, WifiOff, Wifi } from "lucide-react";
 
 interface UserDepositRequestDialogProps {
   userId: string;
@@ -29,10 +29,139 @@ const BANK_DETAILS = {
   bank: "JS Bank",
 };
 
+// Mobile detection
+const isMobileDevice = (): boolean => {
+  if (typeof navigator === 'undefined') return false;
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+};
+
+// Get network info if available
+const getNetworkInfo = (): { effectiveType?: string; downlink?: number } => {
+  if (typeof navigator !== 'undefined' && 'connection' in navigator) {
+    const conn = (navigator as any).connection;
+    return {
+      effectiveType: conn?.effectiveType,
+      downlink: conn?.downlink,
+    };
+  }
+  return {};
+};
+
 const formatFileSize = (bytes: number): string => {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+// Compress image for mobile devices
+const compressImageForMobile = (file: File, maxWidth: number = 1200, quality: number = 0.7): Promise<File> => {
+  return new Promise((resolve, reject) => {
+    // Skip compression for small files (< 1MB)
+    if (file.size < 1024 * 1024) {
+      console.log('[Compress] Skipping - file already small:', formatFileSize(file.size));
+      resolve(file);
+      return;
+    }
+
+    console.log('[Compress] Starting compression for:', file.name, formatFileSize(file.size));
+
+    const img = new Image();
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+
+    if (!ctx) {
+      console.warn('[Compress] Canvas not supported, using original');
+      resolve(file);
+      return;
+    }
+
+    img.onload = () => {
+      try {
+        let { width, height } = img;
+        console.log('[Compress] Original dimensions:', width, 'x', height);
+
+        // Calculate new dimensions
+        if (width > maxWidth) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
+        }
+        console.log('[Compress] New dimensions:', width, 'x', height);
+
+        canvas.width = width;
+        canvas.height = height;
+        
+        // Draw with white background for transparency handling
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
+
+        canvas.toBlob(
+          (blob) => {
+            if (blob) {
+              const compressedFile = new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), {
+                type: 'image/jpeg',
+                lastModified: Date.now(),
+              });
+              console.log('[Compress] Compressed size:', formatFileSize(compressedFile.size));
+              resolve(compressedFile);
+            } else {
+              console.warn('[Compress] Blob creation failed, using original');
+              resolve(file);
+            }
+          },
+          'image/jpeg',
+          quality
+        );
+      } catch (err) {
+        console.error('[Compress] Error during compression:', err);
+        resolve(file); // Fallback to original on error
+      } finally {
+        URL.revokeObjectURL(img.src);
+      }
+    };
+
+    img.onerror = () => {
+      console.error('[Compress] Failed to load image');
+      URL.revokeObjectURL(img.src);
+      resolve(file); // Fallback to original
+    };
+
+    img.src = URL.createObjectURL(file);
+  });
+};
+
+// Upload with timeout for mobile
+const uploadWithTimeout = async (
+  bucket: string,
+  path: string,
+  file: File,
+  timeoutMs: number = 30000
+): Promise<{ data: any; error: any }> => {
+  console.log('[Upload] Starting with timeout:', timeoutMs, 'ms');
+  
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => {
+    console.log('[Upload] Timeout reached, aborting...');
+    controller.abort();
+  }, timeoutMs);
+
+  try {
+    const { data, error } = await supabase.storage
+      .from(bucket)
+      .upload(path, file, {
+        cacheControl: '3600',
+        upsert: true,
+      });
+
+    clearTimeout(timeoutId);
+    return { data, error };
+  } catch (err: any) {
+    clearTimeout(timeoutId);
+    if (err.name === 'AbortError' || controller.signal.aborted) {
+      return { data: null, error: { message: 'Upload timed out. Please try again on a stronger connection.' } };
+    }
+    return { data: null, error: err };
+  }
 };
 
 export function UserDepositRequestDialog({
@@ -49,7 +178,42 @@ export function UserDepositRequestDialog({
   const [uploadStatus, setUploadStatus] = useState<string>("");
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [uploadFailed, setUploadFailed] = useState(false);
+  const [isOnline, setIsOnline] = useState(true);
+  const [isMobile, setIsMobile] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Track online status
+  useEffect(() => {
+    setIsOnline(navigator.onLine);
+    setIsMobile(isMobileDevice());
+
+    const handleOnline = () => {
+      console.log('[Network] Back online');
+      setIsOnline(true);
+      toast({
+        title: "Back online",
+        description: "You can now upload your payment proof",
+      });
+    };
+
+    const handleOffline = () => {
+      console.log('[Network] Went offline');
+      setIsOnline(false);
+      toast({
+        title: "No internet connection",
+        description: "Please check your network and try again",
+        variant: "destructive",
+      });
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [toast]);
 
   const copyToClipboard = (text: string, field: string) => {
     navigator.clipboard.writeText(text);
@@ -57,11 +221,17 @@ export function UserDepositRequestDialog({
     setTimeout(() => setCopiedField(null), 2000);
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    console.log("File selected:", file.name, "Size:", file.size, "Type:", file.type);
+    const mobile = isMobileDevice();
+    const maxSize = mobile ? 3 * 1024 * 1024 : 5 * 1024 * 1024; // 3MB for mobile, 5MB for desktop
+    const networkInfo = getNetworkInfo();
+
+    console.log('[FileSelect] Device:', mobile ? 'Mobile' : 'Desktop');
+    console.log('[FileSelect] File:', file.name, 'Size:', formatFileSize(file.size), 'Type:', file.type);
+    console.log('[FileSelect] Network:', networkInfo);
 
     if (!file.type.startsWith("image/")) {
       toast({
@@ -72,30 +242,87 @@ export function UserDepositRequestDialog({
       return;
     }
 
-    // Max 5MB for reliable mobile uploads
-    if (file.size > 5 * 1024 * 1024) {
+    // Check raw file size first (before compression)
+    if (file.size > 12 * 1024 * 1024) {
       toast({
         title: "File too large",
-        description: "Please upload an image smaller than 5MB for reliable upload",
+        description: "Please upload an image smaller than 12MB",
         variant: "destructive",
       });
       return;
     }
 
-    setProofFile(file);
-    setUploadFailed(false);
-    
-    toast({
-      title: "Image selected",
-      description: `${file.name} (${formatFileSize(file.size)})`,
-    });
+    // Show compression toast for large mobile files
+    if (mobile && file.size > 1024 * 1024) {
+      toast({
+        title: "Optimizing image...",
+        description: "Compressing for faster upload",
+      });
+    }
+
+    try {
+      // Compress on mobile or for large files
+      let processedFile = file;
+      if (mobile || file.size > 2 * 1024 * 1024) {
+        processedFile = await compressImageForMobile(file, 1200, 0.7);
+      }
+
+      // Check final size
+      if (processedFile.size > maxSize) {
+        toast({
+          title: "File still too large",
+          description: `Please upload a smaller image (max ${mobile ? '3' : '5'}MB after compression)`,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      setProofFile(processedFile);
+      setUploadFailed(false);
+      
+      const sizeChange = file.size !== processedFile.size 
+        ? ` (compressed from ${formatFileSize(file.size)})` 
+        : '';
+      
+      toast({
+        title: "Image ready",
+        description: `${formatFileSize(processedFile.size)}${sizeChange}`,
+      });
+    } catch (error) {
+      console.error('[FileSelect] Processing error:', error);
+      // Use original file if compression fails
+      if (file.size <= maxSize) {
+        setProofFile(file);
+        setUploadFailed(false);
+        toast({
+          title: "Image selected",
+          description: `${file.name} (${formatFileSize(file.size)})`,
+        });
+      } else {
+        toast({
+          title: "File too large",
+          description: "Could not compress image. Please use a smaller file.",
+          variant: "destructive",
+        });
+      }
+    }
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = useCallback(async () => {
     if (!amount || !proofFile) {
       toast({
         title: "Missing information",
         description: "Please enter amount and upload payment proof",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Check network before starting
+    if (!navigator.onLine) {
+      toast({
+        title: "No internet connection",
+        description: "Please check your network and try again",
         variant: "destructive",
       });
       return;
@@ -116,68 +343,88 @@ export function UserDepositRequestDialog({
     setUploadStatus("Starting...");
     setUploadFailed(false);
 
+    const mobile = isMobileDevice();
+    const networkInfo = getNetworkInfo();
+    const timeout = mobile ? 30000 : 60000; // 30s for mobile, 60s for desktop
+
     try {
       console.log("=== UPLOAD START ===");
-      console.log("File:", proofFile.name, "Size:", proofFile.size);
+      console.log("[Device]", mobile ? 'Mobile' : 'Desktop');
+      console.log("[Network]", networkInfo);
+      console.log("[File]", proofFile.name, formatFileSize(proofFile.size));
+      console.log("[Timeout]", timeout, 'ms');
       
       // Step 1: Check session
       setUploadProgress(10);
       setUploadStatus("Checking login...");
-      console.log("Step 1: Checking session");
+      console.log("[Step 1] Checking session");
       
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
       
       if (sessionError) {
-        console.error("Session error:", sessionError);
+        console.error("[Session] Error:", sessionError);
         throw new Error("Session error. Please log in again.");
       }
       
       if (!session) {
-        console.log("No session, trying refresh");
+        console.log("[Session] No session, trying refresh");
         const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
         if (refreshError || !refreshData.session) {
-          console.error("Refresh failed:", refreshError);
-          throw new Error("Please log out and log in again.");
+          console.error("[Session] Refresh failed:", refreshError);
+          throw new Error("Session expired. Please log out and log in again.");
         }
+        console.log("[Session] Refreshed successfully");
       }
       
-      console.log("Session OK");
+      console.log("[Session] OK");
       setUploadProgress(20);
-      setUploadStatus("Uploading image...");
+      setUploadStatus(mobile ? "Uploading (may take a moment)..." : "Uploading image...");
       
-      // Step 2: Upload file - SIMPLEST possible approach
-      const fileName = `${userId}/${Date.now()}_${Math.random().toString(36).substring(7)}.${proofFile.name.split('.').pop() || 'jpg'}`;
-      console.log("Step 2: Uploading to:", fileName);
+      // Step 2: Upload file with timeout
+      const ext = proofFile.name.split('.').pop()?.toLowerCase() || 'jpg';
+      const fileName = `${userId}/${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
+      console.log("[Step 2] Uploading to:", fileName);
       
-      // Start progress simulation
+      // Simulate progress for better UX
       const progressInterval = setInterval(() => {
         setUploadProgress(prev => {
-          if (prev < 80) return prev + 10;
+          if (prev < 75) return prev + 5;
           return prev;
         });
-      }, 500);
+      }, 800);
       
-      // Direct upload using Supabase SDK
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('payment-proofs')
-        .upload(fileName, proofFile, {
-          cacheControl: '3600',
-          upsert: true,
-        });
+      const { data: uploadData, error: uploadError } = await uploadWithTimeout(
+        'payment-proofs',
+        fileName,
+        proofFile,
+        timeout
+      );
       
       clearInterval(progressInterval);
       
       if (uploadError) {
-        console.error("Upload error:", uploadError);
-        throw new Error(uploadError.message || "Upload failed");
+        console.error("[Upload] Error:", uploadError);
+        
+        // Mobile-specific error messages
+        if (uploadError.message?.includes('timeout') || uploadError.message?.includes('timed out')) {
+          throw new Error(mobile 
+            ? "Upload timed out. Try on WiFi or a stronger signal." 
+            : "Upload timed out. Please try again.");
+        }
+        
+        if (uploadError.message?.includes('network') || uploadError.message?.includes('fetch')) {
+          throw new Error("Network error. Please check your connection and try again.");
+        }
+        
+        throw new Error(uploadError.message || "Upload failed. Please try again.");
       }
       
-      console.log("Upload success:", uploadData);
-      setUploadProgress(90);
+      console.log("[Upload] Success:", uploadData);
+      setUploadProgress(85);
       setUploadStatus("Saving request...");
       
       // Step 3: Create deposit request
-      console.log("Step 3: Creating deposit request");
+      console.log("[Step 3] Creating deposit request");
       
       const { error: insertError } = await supabase
         .from("deposit_requests")
@@ -189,8 +436,8 @@ export function UserDepositRequestDialog({
         });
 
       if (insertError) {
-        console.error("Insert error:", insertError);
-        throw insertError;
+        console.error("[Insert] Error:", insertError);
+        throw new Error("Failed to save request. Please try again.");
       }
 
       console.log("=== UPLOAD COMPLETE ===");
@@ -217,6 +464,7 @@ export function UserDepositRequestDialog({
     } catch (error: any) {
       console.error("=== UPLOAD FAILED ===", error);
       setUploadFailed(true);
+      setUploadStatus("Failed");
       
       toast({
         title: "Upload failed",
@@ -225,17 +473,23 @@ export function UserDepositRequestDialog({
       });
     } finally {
       setIsLoading(false);
-      if (!uploadFailed) {
-        setUploadProgress(0);
-        setUploadStatus("");
-      }
     }
-  };
+  }, [amount, proofFile, bankReference, userId, toast, onSuccess]);
 
   const handleRetry = () => {
+    if (!navigator.onLine) {
+      toast({
+        title: "Still offline",
+        description: "Please wait for your connection to restore",
+        variant: "destructive",
+      });
+      return;
+    }
     setUploadFailed(false);
     handleSubmit();
   };
+
+  const maxSizeText = isMobile ? "3MB" : "5MB";
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -252,6 +506,14 @@ export function UserDepositRequestDialog({
             Transfer funds to our bank account and upload the payment proof
           </DialogDescription>
         </DialogHeader>
+
+        {/* Network Status Banner */}
+        {!isOnline && (
+          <div className="flex items-center gap-2 p-3 bg-destructive/10 text-destructive rounded-lg text-sm">
+            <WifiOff className="w-4 h-4" />
+            <span>You're offline. Please check your connection.</span>
+          </div>
+        )}
 
         <div className="space-y-6 py-4">
           {/* Bank Details */}
@@ -376,13 +638,13 @@ export function UserDepositRequestDialog({
                 type="file"
                 accept="image/*"
                 onChange={handleFileChange}
-                disabled={isLoading}
+                disabled={isLoading || !isOnline}
                 className="hidden"
                 id="proof-upload"
               />
               <label
                 htmlFor="proof-upload"
-                className="flex flex-col items-center gap-2 cursor-pointer"
+                className={`flex flex-col items-center gap-2 ${isOnline ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}`}
               >
                 {proofFile ? (
                   <>
@@ -402,7 +664,7 @@ export function UserDepositRequestDialog({
                       Tap to upload screenshot
                     </span>
                     <span className="text-xs text-muted-foreground">
-                      Max 5MB
+                      Max {maxSizeText} • Auto-compressed on mobile
                     </span>
                   </>
                 )}
@@ -418,6 +680,19 @@ export function UserDepositRequestDialog({
                 <span className="font-medium">{uploadProgress}%</span>
               </div>
               <Progress value={uploadProgress} className="h-2" />
+              {isMobile && uploadProgress > 20 && uploadProgress < 85 && (
+                <p className="text-xs text-muted-foreground text-center">
+                  Please keep the app open...
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Upload Failed State */}
+          {uploadFailed && !isLoading && (
+            <div className="flex items-center gap-2 p-3 bg-destructive/10 text-destructive rounded-lg text-sm">
+              <WifiOff className="w-4 h-4 flex-shrink-0" />
+              <span>Upload failed. Check your connection and try again.</span>
             </div>
           )}
         </div>
@@ -428,6 +703,7 @@ export function UserDepositRequestDialog({
               variant="outline"
               onClick={handleRetry}
               className="w-full sm:w-auto"
+              disabled={!isOnline}
             >
               <RefreshCw className="w-4 h-4 mr-2" />
               Retry Upload
@@ -435,13 +711,18 @@ export function UserDepositRequestDialog({
           )}
           <Button
             onClick={handleSubmit}
-            disabled={isLoading || !amount || !proofFile}
+            disabled={isLoading || !amount || !proofFile || !isOnline}
             className="w-full sm:w-auto"
           >
             {isLoading ? (
               <>
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                 {uploadStatus || "Uploading..."}
+              </>
+            ) : !isOnline ? (
+              <>
+                <WifiOff className="w-4 h-4 mr-2" />
+                Offline
               </>
             ) : (
               "Submit Deposit Request"
