@@ -130,37 +130,39 @@ const compressImageForMobile = (file: File, maxWidth: number = 1200, quality: nu
   });
 };
 
-// Upload with timeout for mobile
-const uploadWithTimeout = async (
+// Simple direct upload without AbortController (Supabase SDK handles internally)
+const uploadFile = async (
   bucket: string,
   path: string,
-  file: File,
-  timeoutMs: number = 30000
+  file: File
 ): Promise<{ data: any; error: any }> => {
-  console.log('[Upload] Starting with timeout:', timeoutMs, 'ms');
+  console.log('[Upload] Starting direct upload for:', path, formatFileSize(file.size));
   
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => {
-    console.log('[Upload] Timeout reached, aborting...');
-    controller.abort();
-  }, timeoutMs);
-
   try {
+    // Convert file to ArrayBuffer for more reliable mobile uploads
+    const arrayBuffer = await file.arrayBuffer();
+    const uint8Array = new Uint8Array(arrayBuffer);
+    
+    console.log('[Upload] File converted to ArrayBuffer, uploading...');
+    
     const { data, error } = await supabase.storage
       .from(bucket)
-      .upload(path, file, {
+      .upload(path, uint8Array, {
+        contentType: file.type || 'image/jpeg',
         cacheControl: '3600',
         upsert: true,
       });
 
-    clearTimeout(timeoutId);
-    return { data, error };
-  } catch (err: any) {
-    clearTimeout(timeoutId);
-    if (err.name === 'AbortError' || controller.signal.aborted) {
-      return { data: null, error: { message: 'Upload timed out. Please try again on a stronger connection.' } };
+    if (error) {
+      console.error('[Upload] Supabase error:', error);
+      return { data: null, error };
     }
-    return { data: null, error: err };
+    
+    console.log('[Upload] Success:', data);
+    return { data, error: null };
+  } catch (err: any) {
+    console.error('[Upload] Exception:', err);
+    return { data: null, error: { message: err.message || 'Upload failed' } };
   }
 };
 
@@ -393,11 +395,10 @@ export function UserDepositRequestDialog({
         });
       }, 800);
       
-      const { data: uploadData, error: uploadError } = await uploadWithTimeout(
+      const { data: uploadData, error: uploadError } = await uploadFile(
         'payment-proofs',
         fileName,
-        proofFile,
-        timeout
+        proofFile
       );
       
       clearInterval(progressInterval);
