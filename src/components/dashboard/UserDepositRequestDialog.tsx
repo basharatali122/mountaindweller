@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -36,6 +36,76 @@ const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/
 // Max file size: 3MB for mobile, 5MB for desktop
 const MAX_FILE_SIZE = isMobile ? 3 * 1024 * 1024 : 5 * 1024 * 1024;
 
+// Compress image on client side
+const compressImage = (file: File, maxWidth = 1200, quality = 0.7): Promise<Blob> => {
+  return new Promise((resolve, reject) => {
+    // If not an image, return as-is
+    if (!file.type.startsWith('image/')) {
+      resolve(file);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+
+        // Scale down if needed
+        if (width > maxWidth) {
+          height = (height * maxWidth) / width;
+          width = maxWidth;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new Error('Could not get canvas context'));
+          return;
+        }
+
+        ctx.drawImage(img, 0, 0, width, height);
+
+        canvas.toBlob(
+          (blob) => {
+            if (blob) {
+              resolve(blob);
+            } else {
+              reject(new Error('Compression failed'));
+            }
+          },
+          'image/jpeg',
+          quality
+        );
+      };
+      img.onerror = () => reject(new Error('Image load failed'));
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = () => reject(new Error('File read failed'));
+    reader.readAsDataURL(file);
+  });
+};
+
+// Convert file to ArrayBuffer for reliable mobile upload
+const fileToArrayBuffer = (file: File | Blob): Promise<ArrayBuffer> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (reader.result instanceof ArrayBuffer) {
+        resolve(reader.result);
+      } else {
+        reject(new Error('Failed to read file'));
+      }
+    };
+    reader.onerror = () => reject(new Error('FileReader error'));
+    reader.readAsArrayBuffer(file);
+  });
+};
+
 export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositRequestDialogProps) {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
@@ -46,10 +116,11 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
+  const [uploadProgress, setUploadProgress] = useState<string>("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Listen for network status
-  useState(() => {
+  useEffect(() => {
     if (typeof window === 'undefined') return;
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
@@ -59,7 +130,7 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  });
+  }, []);
 
   const copyToClipboard = (text: string, field: string) => {
     navigator.clipboard.writeText(text);
@@ -117,33 +188,58 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
 
     setIsLoading(true);
     setUploadError(null);
+    setUploadProgress("Preparing...");
 
     try {
       // Refresh session first (helps with mobile auth issues)
+      setUploadProgress("Checking session...");
       const session = await refreshSession();
       if (!session) {
         throw new Error("Session expired. Please login again.");
       }
 
+      // Compress image if it's an image file
+      setUploadProgress("Processing file...");
+      let fileToUpload: Blob = proofFile;
+      let contentType = proofFile.type || 'application/octet-stream';
+      
+      if (proofFile.type.startsWith('image/') && isMobile) {
+        try {
+          fileToUpload = await compressImage(proofFile, 1200, 0.7);
+          contentType = 'image/jpeg';
+          console.log(`Compressed from ${proofFile.size} to ${fileToUpload.size} bytes`);
+        } catch (compressError) {
+          console.warn("Compression failed, using original:", compressError);
+          fileToUpload = proofFile;
+        }
+      }
+
+      // Convert to ArrayBuffer for reliable mobile upload
+      setUploadProgress("Converting file...");
+      const arrayBuffer = await fileToArrayBuffer(fileToUpload);
+      console.log("ArrayBuffer size:", arrayBuffer.byteLength);
+
       // Generate unique file path
       const timestamp = Date.now();
       const randomStr = Math.random().toString(36).substring(2, 8);
-      const extension = proofFile.name.split(".").pop()?.toLowerCase() || "jpg";
+      const extension = proofFile.type.startsWith('image/') && isMobile ? 'jpg' : (proofFile.name.split(".").pop()?.toLowerCase() || "bin");
       const filePath = `${userId}/${timestamp}_${randomStr}.${extension}`;
 
-      console.log("Starting upload:", { filePath, fileSize: proofFile.size, fileType: proofFile.type });
+      console.log("Starting upload:", { filePath, fileSize: arrayBuffer.byteLength, contentType });
+      setUploadProgress("Uploading...");
 
-      // Upload with timeout
+      // Upload with ArrayBuffer (more reliable on mobile)
       const uploadPromise = supabase.storage
         .from("payment-proofs")
-        .upload(filePath, proofFile, {
+        .upload(filePath, arrayBuffer, {
+          contentType: contentType,
           cacheControl: "3600",
           upsert: true,
         });
 
-      // Race against timeout (30 seconds for mobile)
+      // Race against timeout (45 seconds for mobile)
       const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error("Upload timed out. Please try with a smaller file.")), 30000)
+        setTimeout(() => reject(new Error("Upload timed out. Please try with a smaller file or better connection.")), 45000)
       );
 
       const result = await Promise.race([uploadPromise, timeoutPromise]) as any;
@@ -154,6 +250,7 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
       }
 
       console.log("Upload successful, creating deposit request");
+      setUploadProgress("Saving request...");
 
       // Create deposit request
       const { error: insertError } = await supabase.from("deposit_requests").insert({
@@ -179,6 +276,7 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
       setAmount("");
       setBankReference("");
       setProofFile(null);
+      setUploadProgress("");
       if (fileInputRef.current) fileInputRef.current.value = "";
       setOpen(false);
       onSuccess?.();
@@ -186,6 +284,7 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
     } catch (error: any) {
       console.error("Submit error:", error);
       setUploadError(error.message || "Upload failed");
+      setUploadProgress("");
       toast({
         title: "Failed",
         description: error.message || "Please try again",
@@ -309,6 +408,7 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
                 ref={fileInputRef}
                 type="file"
                 accept="*/*"
+                capture="environment"
                 onChange={handleFileChange}
                 className="hidden"
                 disabled={isLoading}
@@ -322,12 +422,20 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
               ) : (
                 <div className="flex flex-col items-center gap-2">
                   <FileImage className="w-8 h-8 text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground">Tap to select any file</p>
-                  <p className="text-xs text-muted-foreground">Max {isMobile ? "3" : "5"}MB</p>
+                  <p className="text-sm text-muted-foreground">Tap to select or take photo</p>
+                  <p className="text-xs text-muted-foreground">Max {isMobile ? "3" : "5"}MB • Images auto-compressed</p>
                 </div>
               )}
             </div>
           </div>
+
+          {/* Upload Progress */}
+          {uploadProgress && (
+            <div className="flex items-center gap-2 p-3 bg-primary/10 border border-primary/30 rounded-lg">
+              <Loader2 className="w-4 h-4 animate-spin text-primary" />
+              <span className="text-sm text-primary">{uploadProgress}</span>
+            </div>
+          )}
 
           {/* Error with Retry */}
           {uploadError && (
