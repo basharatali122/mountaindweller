@@ -28,65 +28,37 @@ const BANK_DETAILS = {
   bank: "JS Bank",
 };
 
-// Detect if mobile
-const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-  typeof navigator !== 'undefined' ? navigator.userAgent : ''
-);
+// Max file size: 5MB
+const MAX_FILE_SIZE = 5 * 1024 * 1024;
 
-// Max file size: 5MB for mobile (Cloudinary handles compression), 10MB for desktop
-const MAX_FILE_SIZE = isMobile ? 5 * 1024 * 1024 : 10 * 1024 * 1024;
+// Upload directly to Supabase Storage (most reliable for mobile)
+const uploadPaymentProof = async (file: File | Blob, userId: string): Promise<string> => {
+  const timestamp = Date.now();
+  const ext = file instanceof File ? file.name.split('.').pop() || 'jpg' : 'jpg';
+  const filePath = `${userId}/${timestamp}.${ext}`;
 
-// Upload via XMLHttpRequest (more reliable on mobile than fetch)
-const uploadPaymentProof = (file: File | Blob, fileName: string): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-    const uploadUrl = `${supabaseUrl}/functions/v1/cloudinary-upload`;
+  console.log('Uploading to Supabase Storage:', filePath, 'Size:', file.size);
 
-    // Set timeout
-    xhr.timeout = 120000; // 2 minutes
+  const { data, error } = await supabase.storage
+    .from('payment-proofs')
+    .upload(filePath, file, {
+      cacheControl: '3600',
+      upsert: true,
+    });
 
-    xhr.onload = () => {
-      console.log('XHR completed, status:', xhr.status);
-      if (xhr.status >= 200 && xhr.status < 300) {
-        try {
-          const data = JSON.parse(xhr.responseText);
-          console.log('Upload success:', data.url);
-          if (data.url) {
-            resolve(data.url);
-          } else {
-            reject(new Error(data.error || 'No URL returned'));
-          }
-        } catch (e) {
-          console.error('Parse error:', e);
-          reject(new Error('Invalid response from server'));
-        }
-      } else {
-        console.error('XHR error status:', xhr.status, xhr.responseText);
-        reject(new Error(`Upload failed: ${xhr.status}`));
-      }
-    };
+  if (error) {
+    console.error('Storage upload error:', error);
+    throw new Error(error.message || 'Upload failed');
+  }
 
-    xhr.onerror = () => {
-      console.error('XHR network error');
-      reject(new Error('Network error. Please check your connection.'));
-    };
+  console.log('Upload success:', data.path);
+  
+  // Get public URL
+  const { data: urlData } = supabase.storage
+    .from('payment-proofs')
+    .getPublicUrl(data.path);
 
-    xhr.ontimeout = () => {
-      console.error('XHR timeout');
-      reject(new Error('Upload timed out. Please try with a smaller file.'));
-    };
-
-    // Create FormData
-    const formData = new FormData();
-    formData.append('file', file, fileName);
-    formData.append('fileName', fileName);
-
-    console.log('Starting XHR upload:', { fileName, fileSize: file.size });
-
-    xhr.open('POST', uploadUrl, true);
-    xhr.send(formData);
-  });
+  return urlData.publicUrl || data.path;
 };
 
 // Compress image on client side (optional, reduces upload time)
@@ -226,16 +198,11 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
     setUploadProgress("Preparing...");
 
     try {
-      // Generate unique file name
-      const timestamp = Date.now();
-      const randomStr = Math.random().toString(36).substring(2, 8);
-      const fileName = `payment_${userId}_${timestamp}_${randomStr}`;
-
-      // Compress image on mobile for faster upload
+      // Compress image for faster upload
       setUploadProgress("Processing file...");
       let fileToUpload: File | Blob = proofFile;
       
-      if (proofFile.type.startsWith('image/') && isMobile) {
+      if (proofFile.type.startsWith('image/')) {
         try {
           fileToUpload = await compressImage(proofFile, 1200, 0.7);
           console.log(`Compressed from ${proofFile.size} to ${fileToUpload.size} bytes`);
@@ -245,40 +212,26 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
         }
       }
 
-      // Upload via edge function to Cloudinary
-      setUploadProgress("Uploading to cloud...");
-      console.log("Starting upload:", { fileName, fileSize: fileToUpload.size });
-      
-      const imageUrl = await uploadPaymentProof(fileToUpload, fileName);
+      // Upload to Supabase Storage
+      setUploadProgress("Uploading...");
+      const imageUrl = await uploadPaymentProof(fileToUpload, userId);
       console.log("Upload successful:", imageUrl);
 
-      // Refresh session before database insert (may have expired during upload)
-      setUploadProgress("Saving request...");
-      console.log("Refreshing session before insert...");
-      await refreshSession();
-
-      // Create deposit request in database with timeout
-      console.log("Inserting deposit request...");
-      const insertPromise = supabase.from("deposit_requests").insert({
+      // Create deposit request in database
+      setUploadProgress("Saving...");
+      const { error: insertError } = await supabase.from("deposit_requests").insert({
         user_id: userId,
         amount: depositAmount,
         bank_reference: bankReference || null,
         payment_proof_url: imageUrl,
       });
 
-      // Add timeout for database insert
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error("Database save timed out")), 30000)
-      );
-
-      const { error: insertError } = await Promise.race([insertPromise, timeoutPromise]) as any;
-
       if (insertError) {
         console.error("Insert error:", insertError);
-        throw new Error("Failed to submit request: " + insertError.message);
+        throw new Error("Failed to save: " + insertError.message);
       }
       
-      console.log("Deposit request saved successfully!");
+      console.log("Deposit request saved!");
 
       toast({
         title: "Success!",
@@ -436,7 +389,7 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
                 <div className="flex flex-col items-center gap-2">
                   <FileImage className="w-8 h-8 text-muted-foreground" />
                   <p className="text-sm text-muted-foreground">Tap to select or take photo</p>
-                  <p className="text-xs text-muted-foreground">Max {isMobile ? "3" : "5"}MB • Images auto-compressed</p>
+                  <p className="text-xs text-muted-foreground">Max 5MB • Images auto-compressed</p>
                 </div>
               )}
             </div>
