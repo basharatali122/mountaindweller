@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.send-withdrawal-notification]
 verify_jwt = false
+
+[functions.upload-payment-proof]
+verify_jwt = false
