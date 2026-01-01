@@ -31,34 +31,53 @@ const BANK_DETAILS = {
 // Max file size: 5MB
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 
-// Upload directly to Supabase Storage (most reliable for mobile)
+// Cloudinary direct upload (no edge function needed)
+const CLOUDINARY_CLOUD = 'dqbaaldf8';
+const CLOUDINARY_PRESET = 'ml_default'; // Default unsigned preset
+
+// Convert file to data URL (works better on mobile)
+const fileToDataUrl = (file: File | Blob): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error('Failed to read file'));
+    reader.readAsDataURL(file);
+  });
+};
+
+// Upload using Cloudinary widget approach (data URL)
 const uploadPaymentProof = async (file: File | Blob, userId: string): Promise<string> => {
   const timestamp = Date.now();
-  const ext = file instanceof File ? file.name.split('.').pop() || 'jpg' : 'jpg';
-  const filePath = `${userId}/${timestamp}.${ext}`;
+  const fileName = `payment_${userId}_${timestamp}`;
 
-  console.log('Uploading to Supabase Storage:', filePath, 'Size:', file.size);
+  console.log('Converting file to data URL...');
+  const dataUrl = await fileToDataUrl(file);
+  
+  console.log('Uploading to Cloudinary...', fileName);
 
-  const { data, error } = await supabase.storage
-    .from('payment-proofs')
-    .upload(filePath, file, {
-      cacheControl: '3600',
-      upsert: true,
-    });
+  // Create form with data URL
+  const formData = new FormData();
+  formData.append('file', dataUrl);
+  formData.append('upload_preset', CLOUDINARY_PRESET);
+  formData.append('public_id', fileName);
 
-  if (error) {
-    console.error('Storage upload error:', error);
-    throw new Error(error.message || 'Upload failed');
+  const response = await fetch(
+    `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/image/upload`,
+    {
+      method: 'POST',
+      body: formData,
+    }
+  );
+
+  if (!response.ok) {
+    const err = await response.text();
+    console.error('Cloudinary error:', err);
+    throw new Error('Upload failed');
   }
 
-  console.log('Upload success:', data.path);
-  
-  // Get public URL
-  const { data: urlData } = supabase.storage
-    .from('payment-proofs')
-    .getPublicUrl(data.path);
-
-  return urlData.publicUrl || data.path;
+  const result = await response.json();
+  console.log('Cloudinary success:', result.secure_url);
+  return result.secure_url;
 };
 
 // Compress image on client side (optional, reduces upload time)
