@@ -72,20 +72,12 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
     if (!file) return;
     setUploadError(null);
 
-    // Accept images and PDFs
-    const isImage = file.type.startsWith("image/");
-    const isPdf = file.type === "application/pdf";
-    
-    if (!isImage && !isPdf) {
-      toast({ title: "Invalid file", description: "Please upload an image or PDF", variant: "destructive" });
-      return;
-    }
-
+    // Accept ALL file types - no type restriction
     if (file.size > MAX_FILE_SIZE) {
       const maxMB = MAX_FILE_SIZE / (1024 * 1024);
       toast({ 
         title: "File too large", 
-        description: `Maximum ${maxMB}MB. Try a smaller image or PDF.`, 
+        description: `Maximum ${maxMB}MB. Try a smaller file.`, 
         variant: "destructive" 
       });
       return;
@@ -306,7 +298,7 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
 
           {/* File Upload */}
           <div className="space-y-2">
-            <Label>Payment Proof (Image or PDF)</Label>
+            <Label>Payment Proof (Any file type)</Label>
             <div
               className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all ${
                 proofFile ? "border-primary bg-primary/5" : "border-muted-foreground/25 hover:border-primary/50"
@@ -316,7 +308,7 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/*,.pdf,application/pdf"
+                accept="*/*"
                 onChange={handleFileChange}
                 className="hidden"
                 disabled={isLoading}
@@ -330,7 +322,7 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
               ) : (
                 <div className="flex flex-col items-center gap-2">
                   <FileImage className="w-8 h-8 text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground">Tap to select screenshot or PDF</p>
+                  <p className="text-sm text-muted-foreground">Tap to select any file</p>
                   <p className="text-xs text-muted-foreground">Max {isMobile ? "3" : "5"}MB</p>
                 </div>
               )}
