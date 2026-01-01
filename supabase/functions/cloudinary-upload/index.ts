@@ -16,45 +16,78 @@ serve(async (req: Request) => {
     const CLOUDINARY_UPLOAD_PRESET = Deno.env.get("CLOUDINARY_UPLOAD_PRESET");
 
     if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_UPLOAD_PRESET) {
+      console.error("Missing Cloudinary config:", { 
+        hasCloudName: !!CLOUDINARY_CLOUD_NAME, 
+        hasPreset: !!CLOUDINARY_UPLOAD_PRESET 
+      });
       throw new Error("Cloudinary configuration missing");
     }
 
-    const { file, fileName, contentType } = await req.json();
+    const contentType = req.headers.get("content-type") || "";
+    console.log("Request content-type:", contentType);
 
-    if (!file || !fileName) {
-      throw new Error("Missing file or fileName");
-    }
+    let fileBlob: Blob;
+    let fileName: string;
 
-    // Decode base64 file
-    const binaryStr = atob(file);
-    const bytes = new Uint8Array(binaryStr.length);
-    for (let i = 0; i < binaryStr.length; i++) {
-      bytes[i] = binaryStr.charCodeAt(i);
+    // Handle both FormData and JSON requests
+    if (contentType.includes("multipart/form-data")) {
+      // FormData upload (preferred for mobile)
+      const formData = await req.formData();
+      const file = formData.get("file");
+      fileName = (formData.get("fileName") as string) || `upload_${Date.now()}`;
+
+      if (!file || !(file instanceof File)) {
+        throw new Error("No file provided in FormData");
+      }
+
+      fileBlob = file;
+      console.log("FormData upload:", { fileName, size: file.size, type: file.type });
+    } else {
+      // JSON with base64 (fallback)
+      const { file, fileName: jsonFileName, contentType: fileContentType } = await req.json();
+
+      if (!file || !jsonFileName) {
+        throw new Error("Missing file or fileName in JSON");
+      }
+
+      fileName = jsonFileName;
+
+      // Decode base64 file
+      const binaryStr = atob(file);
+      const bytes = new Uint8Array(binaryStr.length);
+      for (let i = 0; i < binaryStr.length; i++) {
+        bytes[i] = binaryStr.charCodeAt(i);
+      }
+
+      fileBlob = new Blob([bytes], { type: fileContentType || "image/jpeg" });
+      console.log("Base64 upload:", { fileName, size: fileBlob.size });
     }
 
     // Create form data for Cloudinary
-    const formData = new FormData();
-    const blob = new Blob([bytes], { type: contentType || "image/jpeg" });
-    formData.append("file", blob);
-    formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
-    formData.append("public_id", fileName);
+    const cloudinaryFormData = new FormData();
+    cloudinaryFormData.append("file", fileBlob);
+    cloudinaryFormData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+    cloudinaryFormData.append("public_id", fileName);
+
+    console.log("Uploading to Cloudinary...");
 
     // Upload to Cloudinary
     const cloudinaryResponse = await fetch(
       `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/auto/upload`,
       {
         method: "POST",
-        body: formData,
+        body: cloudinaryFormData,
       }
     );
 
     if (!cloudinaryResponse.ok) {
       const errorData = await cloudinaryResponse.json().catch(() => ({}));
-      console.error("Cloudinary error:", errorData);
+      console.error("Cloudinary error:", cloudinaryResponse.status, errorData);
       throw new Error(errorData.error?.message || "Cloudinary upload failed");
     }
 
     const result = await cloudinaryResponse.json();
+    console.log("Cloudinary success:", result.secure_url);
 
     return new Response(
       JSON.stringify({ 
