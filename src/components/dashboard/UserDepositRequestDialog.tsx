@@ -33,13 +33,42 @@ const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/
   typeof navigator !== 'undefined' ? navigator.userAgent : ''
 );
 
-// Max file size: 3MB for mobile, 5MB for desktop
-const MAX_FILE_SIZE = isMobile ? 3 * 1024 * 1024 : 5 * 1024 * 1024;
+// Max file size: 5MB for mobile (Cloudinary handles compression), 10MB for desktop
+const MAX_FILE_SIZE = isMobile ? 5 * 1024 * 1024 : 10 * 1024 * 1024;
 
-// Compress image on client side
+// Upload via edge function (handles Cloudinary)
+const uploadPaymentProof = async (file: File | Blob, fileName: string): Promise<string> => {
+  // Convert file to base64
+  const arrayBuffer = await file.arrayBuffer();
+  const bytes = new Uint8Array(arrayBuffer);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  const base64 = btoa(binary);
+
+  const { data, error } = await supabase.functions.invoke('cloudinary-upload', {
+    body: {
+      file: base64,
+      fileName,
+      contentType: file instanceof File ? file.type : 'image/jpeg',
+    },
+  });
+
+  if (error) {
+    throw new Error(error.message || 'Upload failed');
+  }
+
+  if (!data?.url) {
+    throw new Error(data?.error || 'No URL returned');
+  }
+
+  return data.url;
+};
+
+// Compress image on client side (optional, reduces upload time)
 const compressImage = (file: File, maxWidth = 1200, quality = 0.7): Promise<Blob> => {
   return new Promise((resolve, reject) => {
-    // If not an image, return as-is
     if (!file.type.startsWith('image/')) {
       resolve(file);
       return;
@@ -53,7 +82,6 @@ const compressImage = (file: File, maxWidth = 1200, quality = 0.7): Promise<Blob
         let width = img.width;
         let height = img.height;
 
-        // Scale down if needed
         if (width > maxWidth) {
           height = (height * maxWidth) / width;
           width = maxWidth;
@@ -87,22 +115,6 @@ const compressImage = (file: File, maxWidth = 1200, quality = 0.7): Promise<Blob
     };
     reader.onerror = () => reject(new Error('File read failed'));
     reader.readAsDataURL(file);
-  });
-};
-
-// Convert file to ArrayBuffer for reliable mobile upload
-const fileToArrayBuffer = (file: File | Blob): Promise<ArrayBuffer> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (reader.result instanceof ArrayBuffer) {
-        resolve(reader.result);
-      } else {
-        reject(new Error('Failed to read file'));
-      }
-    };
-    reader.onerror = () => reject(new Error('FileReader error'));
-    reader.readAsArrayBuffer(file);
   });
 };
 
@@ -191,22 +203,18 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
     setUploadProgress("Preparing...");
 
     try {
-      // Refresh session first (helps with mobile auth issues)
-      setUploadProgress("Checking session...");
-      const session = await refreshSession();
-      if (!session) {
-        throw new Error("Session expired. Please login again.");
-      }
+      // Generate unique file name
+      const timestamp = Date.now();
+      const randomStr = Math.random().toString(36).substring(2, 8);
+      const fileName = `payment_${userId}_${timestamp}_${randomStr}`;
 
-      // Compress image if it's an image file
+      // Compress image on mobile for faster upload
       setUploadProgress("Processing file...");
-      let fileToUpload: Blob = proofFile;
-      let contentType = proofFile.type || 'application/octet-stream';
+      let fileToUpload: File | Blob = proofFile;
       
       if (proofFile.type.startsWith('image/') && isMobile) {
         try {
           fileToUpload = await compressImage(proofFile, 1200, 0.7);
-          contentType = 'image/jpeg';
           console.log(`Compressed from ${proofFile.size} to ${fileToUpload.size} bytes`);
         } catch (compressError) {
           console.warn("Compression failed, using original:", compressError);
@@ -214,56 +222,24 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
         }
       }
 
-      // Convert to ArrayBuffer for reliable mobile upload
-      setUploadProgress("Converting file...");
-      const arrayBuffer = await fileToArrayBuffer(fileToUpload);
-      console.log("ArrayBuffer size:", arrayBuffer.byteLength);
-
-      // Generate unique file path
-      const timestamp = Date.now();
-      const randomStr = Math.random().toString(36).substring(2, 8);
-      const extension = proofFile.type.startsWith('image/') && isMobile ? 'jpg' : (proofFile.name.split(".").pop()?.toLowerCase() || "bin");
-      const filePath = `${userId}/${timestamp}_${randomStr}.${extension}`;
-
-      console.log("Starting upload:", { filePath, fileSize: arrayBuffer.byteLength, contentType });
-      setUploadProgress("Uploading...");
-
-      // Upload with ArrayBuffer (more reliable on mobile)
-      const uploadPromise = supabase.storage
-        .from("payment-proofs")
-        .upload(filePath, arrayBuffer, {
-          contentType: contentType,
-          cacheControl: "3600",
-          upsert: true,
-        });
-
-      // Race against timeout (45 seconds for mobile)
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error("Upload timed out. Please try with a smaller file or better connection.")), 45000)
-      );
-
-      const result = await Promise.race([uploadPromise, timeoutPromise]) as any;
+      // Upload via edge function to Cloudinary
+      setUploadProgress("Uploading to cloud...");
+      console.log("Starting upload:", { fileName, fileSize: fileToUpload.size });
       
-      if (result.error) {
-        console.error("Storage upload error:", result.error);
-        throw new Error("Upload failed: " + result.error.message);
-      }
+      const imageUrl = await uploadPaymentProof(fileToUpload, fileName);
+      console.log("Upload successful:", imageUrl);
 
-      console.log("Upload successful, creating deposit request");
+      // Create deposit request in database
       setUploadProgress("Saving request...");
-
-      // Create deposit request
       const { error: insertError } = await supabase.from("deposit_requests").insert({
         user_id: userId,
         amount: depositAmount,
         bank_reference: bankReference || null,
-        payment_proof_url: filePath,
+        payment_proof_url: imageUrl, // Store full Cloudinary URL
       });
 
       if (insertError) {
         console.error("Insert error:", insertError);
-        // Try to clean up the uploaded file
-        await supabase.storage.from("payment-proofs").remove([filePath]);
         throw new Error("Failed to submit request: " + insertError.message);
       }
 
