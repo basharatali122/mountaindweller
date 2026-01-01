@@ -264,19 +264,33 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
       const imageUrl = await uploadPaymentProof(fileToUpload, fileName);
       console.log("Upload successful:", imageUrl);
 
-      // Create deposit request in database
+      // Refresh session before database insert (may have expired during upload)
       setUploadProgress("Saving request...");
-      const { error: insertError } = await supabase.from("deposit_requests").insert({
+      console.log("Refreshing session before insert...");
+      await refreshSession();
+
+      // Create deposit request in database with timeout
+      console.log("Inserting deposit request...");
+      const insertPromise = supabase.from("deposit_requests").insert({
         user_id: userId,
         amount: depositAmount,
         bank_reference: bankReference || null,
-        payment_proof_url: imageUrl, // Store full Cloudinary URL
+        payment_proof_url: imageUrl,
       });
+
+      // Add timeout for database insert
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error("Database save timed out")), 30000)
+      );
+
+      const { error: insertError } = await Promise.race([insertPromise, timeoutPromise]) as any;
 
       if (insertError) {
         console.error("Insert error:", insertError);
         throw new Error("Failed to submit request: " + insertError.message);
       }
+      
+      console.log("Deposit request saved successfully!");
 
       toast({
         title: "Success!",
