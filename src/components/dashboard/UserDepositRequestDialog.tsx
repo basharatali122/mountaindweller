@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Upload, Wallet, Copy, CheckCircle, FileImage, RefreshCw, WifiOff } from "lucide-react";
+import { Loader2, Wallet, Copy, CheckCircle, Link, ExternalLink } from "lucide-react";
 
 interface UserDepositRequestDialogProps {
   userId: string;
@@ -28,153 +28,14 @@ const BANK_DETAILS = {
   bank: "JS Bank",
 };
 
-// Max file size: 5MB
-const MAX_FILE_SIZE = 5 * 1024 * 1024;
-
-// Convert file to base64 data URL
-const fileToBase64 = (file: File | Blob): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      // Extract base64 part after "data:image/jpeg;base64,"
-      const base64 = result.split(',')[1];
-      resolve(base64);
-    };
-    reader.onerror = () => reject(new Error('Failed to read file'));
-    reader.readAsDataURL(file);
-  });
-};
-
-// Upload via edge function with simple XHR
-const uploadPaymentProof = (file: File | Blob, userId: string): Promise<string> => {
-  return new Promise(async (resolve, reject) => {
-    try {
-      const timestamp = Date.now();
-      const fileName = `payment_${userId}_${timestamp}`;
-
-      console.log('Converting to base64...');
-      const base64 = await fileToBase64(file);
-      console.log('Base64 length:', base64.length);
-
-      const xhr = new XMLHttpRequest();
-      const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/cloudinary-upload`;
-
-      xhr.timeout = 120000;
-
-      xhr.onreadystatechange = () => {
-        if (xhr.readyState === 4) {
-          console.log('XHR done, status:', xhr.status);
-          if (xhr.status >= 200 && xhr.status < 300) {
-            try {
-              const data = JSON.parse(xhr.responseText);
-              if (data.url) {
-                resolve(data.url);
-              } else {
-                reject(new Error(data.error || 'No URL'));
-              }
-            } catch {
-              reject(new Error('Invalid response'));
-            }
-          } else {
-            reject(new Error(`Upload failed: ${xhr.status}`));
-          }
-        }
-      };
-
-      xhr.onerror = () => reject(new Error('Network error'));
-      xhr.ontimeout = () => reject(new Error('Timeout'));
-
-      xhr.open('POST', url, true);
-      xhr.setRequestHeader('Content-Type', 'application/json');
-      xhr.send(JSON.stringify({
-        file: base64,
-        fileName,
-        contentType: file.type || 'image/jpeg',
-      }));
-    } catch (err: any) {
-      reject(err);
-    }
-  });
-};
-
-// Compress image on client side (optional, reduces upload time)
-const compressImage = (file: File, maxWidth = 1200, quality = 0.7): Promise<Blob> => {
-  return new Promise((resolve, reject) => {
-    if (!file.type.startsWith('image/')) {
-      resolve(file);
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        let width = img.width;
-        let height = img.height;
-
-        if (width > maxWidth) {
-          height = (height * maxWidth) / width;
-          width = maxWidth;
-        }
-
-        canvas.width = width;
-        canvas.height = height;
-
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          reject(new Error('Could not get canvas context'));
-          return;
-        }
-
-        ctx.drawImage(img, 0, 0, width, height);
-
-        canvas.toBlob(
-          (blob) => {
-            if (blob) {
-              resolve(blob);
-            } else {
-              reject(new Error('Compression failed'));
-            }
-          },
-          'image/jpeg',
-          quality
-        );
-      };
-      img.onerror = () => reject(new Error('Image load failed'));
-      img.src = e.target?.result as string;
-    };
-    reader.onerror = () => reject(new Error('File read failed'));
-    reader.readAsDataURL(file);
-  });
-};
-
 export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositRequestDialogProps) {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState("");
   const [bankReference, setBankReference] = useState("");
-  const [proofFile, setProofFile] = useState<File | null>(null);
+  const [imageLink, setImageLink] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
-  const [uploadError, setUploadError] = useState<string | null>(null);
-  const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
-  const [uploadProgress, setUploadProgress] = useState<string>("");
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Listen for network status
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, []);
 
   const copyToClipboard = (text: string, field: string) => {
     navigator.clipboard.writeText(text);
@@ -182,45 +43,24 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
     setTimeout(() => setCopiedField(null), 2000);
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploadError(null);
-
-    // Accept ALL file types - no type restriction
-    if (file.size > MAX_FILE_SIZE) {
-      const maxMB = MAX_FILE_SIZE / (1024 * 1024);
-      toast({ 
-        title: "File too large", 
-        description: `Maximum ${maxMB}MB. Try a smaller file.`, 
-        variant: "destructive" 
-      });
-      return;
-    }
-
-    setProofFile(file);
-    toast({ title: "File selected", description: file.name });
-  };
-
-  const refreshSession = async () => {
+  const isValidUrl = (url: string) => {
+    if (!url) return false;
     try {
-      const { data, error } = await supabase.auth.refreshSession();
-      if (error) throw error;
-      return data.session;
-    } catch (e) {
-      console.error("Session refresh failed:", e);
-      return null;
+      new URL(url);
+      return true;
+    } catch {
+      return false;
     }
   };
 
   const handleSubmit = async () => {
-    if (!amount || !proofFile) {
-      toast({ title: "Missing info", description: "Enter amount and upload proof", variant: "destructive" });
+    if (!amount || !imageLink) {
+      toast({ title: "Missing info", description: "Enter amount and image link", variant: "destructive" });
       return;
     }
 
-    if (!isOnline) {
-      toast({ title: "No internet", description: "Please check your connection", variant: "destructive" });
+    if (!isValidUrl(imageLink)) {
+      toast({ title: "Invalid link", description: "Please enter a valid image URL", variant: "destructive" });
       return;
     }
 
@@ -231,63 +71,32 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
     }
 
     setIsLoading(true);
-    setUploadError(null);
-    setUploadProgress("Preparing...");
 
     try {
-      // Compress image for faster upload
-      setUploadProgress("Processing file...");
-      let fileToUpload: File | Blob = proofFile;
-      
-      if (proofFile.type.startsWith('image/')) {
-        try {
-          fileToUpload = await compressImage(proofFile, 1200, 0.7);
-          console.log(`Compressed from ${proofFile.size} to ${fileToUpload.size} bytes`);
-        } catch (compressError) {
-          console.warn("Compression failed, using original:", compressError);
-          fileToUpload = proofFile;
-        }
-      }
-
-      // Upload to Supabase Storage
-      setUploadProgress("Uploading...");
-      const imageUrl = await uploadPaymentProof(fileToUpload, userId);
-      console.log("Upload successful:", imageUrl);
-
-      // Create deposit request in database
-      setUploadProgress("Saving...");
       const { error: insertError } = await supabase.from("deposit_requests").insert({
         user_id: userId,
         amount: depositAmount,
         bank_reference: bankReference || null,
-        payment_proof_url: imageUrl,
+        payment_proof_url: imageLink.trim(),
       });
 
       if (insertError) {
-        console.error("Insert error:", insertError);
         throw new Error("Failed to save: " + insertError.message);
       }
-      
-      console.log("Deposit request saved!");
 
       toast({
         title: "Success!",
         description: "Deposit request submitted for review",
       });
 
-      // Reset and close
       setAmount("");
       setBankReference("");
-      setProofFile(null);
-      setUploadProgress("");
-      if (fileInputRef.current) fileInputRef.current.value = "";
+      setImageLink("");
       setOpen(false);
       onSuccess?.();
 
     } catch (error: any) {
       console.error("Submit error:", error);
-      setUploadError(error.message || "Upload failed");
-      setUploadProgress("");
       toast({
         title: "Failed",
         description: error.message || "Please try again",
@@ -296,11 +105,6 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const handleRetry = () => {
-    setUploadError(null);
-    handleSubmit();
   };
 
   return (
@@ -314,15 +118,8 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
       <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Deposit Funds</DialogTitle>
-          <DialogDescription>Transfer to our bank and upload payment proof</DialogDescription>
+          <DialogDescription>Transfer to our bank and share payment screenshot link</DialogDescription>
         </DialogHeader>
-
-        {!isOnline && (
-          <div className="flex items-center gap-2 p-3 bg-destructive/10 border border-destructive/30 rounded-lg text-destructive">
-            <WifiOff className="w-4 h-4" />
-            <span className="text-sm">No internet connection</span>
-          </div>
-        )}
 
         <div className="space-y-6 py-4">
           {/* Bank Details */}
@@ -398,75 +195,52 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
             />
           </div>
 
-          {/* File Upload */}
+          {/* Image Link Input */}
           <div className="space-y-2">
-            <Label>Payment Proof (Any file type)</Label>
-            <div
-              className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all ${
-                proofFile ? "border-primary bg-primary/5" : "border-muted-foreground/25 hover:border-primary/50"
-              } ${isLoading ? "opacity-50 pointer-events-none" : ""}`}
-              onClick={() => !isLoading && fileInputRef.current?.click()}
-            >
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="*/*"
-                capture="environment"
-                onChange={handleFileChange}
-                className="hidden"
-                disabled={isLoading}
-              />
-              {proofFile ? (
-                <div className="flex flex-col items-center gap-2">
-                  <CheckCircle className="w-8 h-8 text-primary" />
-                  <p className="text-sm font-medium text-foreground truncate max-w-full">{proofFile.name}</p>
-                  <p className="text-xs text-muted-foreground">{(proofFile.size / 1024).toFixed(1)} KB</p>
-                </div>
-              ) : (
-                <div className="flex flex-col items-center gap-2">
-                  <FileImage className="w-8 h-8 text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground">Tap to select or take photo</p>
-                  <p className="text-xs text-muted-foreground">Max 5MB • Images auto-compressed</p>
-                </div>
+            <Label htmlFor="imageLink">Payment Screenshot Link</Label>
+            <div className="space-y-2">
+              <div className="relative">
+                <Link className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  id="imageLink"
+                  type="url"
+                  placeholder="Paste image link here..."
+                  value={imageLink}
+                  onChange={(e) => setImageLink(e.target.value)}
+                  disabled={isLoading}
+                  className="pl-10"
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Upload your screenshot to Google Drive, WhatsApp, or any image hosting site and paste the link here
+              </p>
+              {imageLink && isValidUrl(imageLink) && (
+                <a 
+                  href={imageLink} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                >
+                  <ExternalLink className="w-3 h-3" />
+                  Preview link
+                </a>
               )}
             </div>
           </div>
-
-          {/* Upload Progress */}
-          {uploadProgress && (
-            <div className="flex items-center gap-2 p-3 bg-primary/10 border border-primary/30 rounded-lg">
-              <Loader2 className="w-4 h-4 animate-spin text-primary" />
-              <span className="text-sm text-primary">{uploadProgress}</span>
-            </div>
-          )}
-
-          {/* Error with Retry */}
-          {uploadError && (
-            <div className="flex items-center justify-between p-3 bg-destructive/10 border border-destructive/30 rounded-lg">
-              <span className="text-sm text-destructive">{uploadError}</span>
-              <Button size="sm" variant="outline" onClick={handleRetry} disabled={isLoading}>
-                <RefreshCw className="w-4 h-4 mr-1" />
-                Retry
-              </Button>
-            </div>
-          )}
         </div>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)} disabled={isLoading}>
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={isLoading || !proofFile || !amount || !isOnline}>
+          <Button onClick={handleSubmit} disabled={isLoading || !imageLink || !amount}>
             {isLoading ? (
               <>
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Uploading...
+                Submitting...
               </>
             ) : (
-              <>
-                <Upload className="w-4 h-4 mr-2" />
-                Submit Request
-              </>
+              "Submit Request"
             )}
           </Button>
         </DialogFooter>
