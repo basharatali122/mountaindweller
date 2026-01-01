@@ -130,31 +130,35 @@ const compressImageForMobile = (file: File, maxWidth: number = 1200, quality: nu
   });
 };
 
-// Simple direct upload without AbortController (Supabase SDK handles internally)
+// Promise with timeout wrapper
+const withTimeout = <T,>(promise: Promise<T>, ms: number, errorMsg: string): Promise<T> => {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(errorMsg)), ms);
+    promise
+      .then((result) => { clearTimeout(timer); resolve(result); })
+      .catch((err) => { clearTimeout(timer); reject(err); });
+  });
+};
+
+// Simple direct upload
 const uploadFile = async (
   bucket: string,
   path: string,
   file: File
 ): Promise<{ data: any; error: any }> => {
-  console.log('[Upload] Starting direct upload for:', path, formatFileSize(file.size));
+  console.log('[Upload] Starting for:', path, formatFileSize(file.size));
   
   try {
-    // Convert file to ArrayBuffer for more reliable mobile uploads
-    const arrayBuffer = await file.arrayBuffer();
-    const uint8Array = new Uint8Array(arrayBuffer);
-    
-    console.log('[Upload] File converted to ArrayBuffer, uploading...');
-    
     const { data, error } = await supabase.storage
       .from(bucket)
-      .upload(path, uint8Array, {
+      .upload(path, file, {
         contentType: file.type || 'image/jpeg',
         cacheControl: '3600',
         upsert: true,
       });
 
     if (error) {
-      console.error('[Upload] Supabase error:', error);
+      console.error('[Upload] Error:', error);
       return { data: null, error };
     }
     
@@ -352,33 +356,37 @@ export function UserDepositRequestDialog({
     try {
       console.log("=== UPLOAD START ===");
       console.log("[Device]", mobile ? 'Mobile' : 'Desktop');
-      console.log("[Network]", networkInfo);
       console.log("[File]", proofFile.name, formatFileSize(proofFile.size));
-      console.log("[Timeout]", timeout, 'ms');
       
-      // Step 1: Check session
+      // Step 1: Quick session check with timeout (skip refresh on mobile for speed)
       setUploadProgress(10);
-      setUploadStatus("Checking login...");
-      console.log("[Step 1] Checking session");
+      setUploadStatus("Verifying...");
       
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      
-      if (sessionError) {
-        console.error("[Session] Error:", sessionError);
-        throw new Error("Session error. Please log in again.");
-      }
-      
-      if (!session) {
-        console.log("[Session] No session, trying refresh");
-        const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
-        if (refreshError || !refreshData.session) {
-          console.error("[Session] Refresh failed:", refreshError);
-          throw new Error("Session expired. Please log out and log in again.");
+      try {
+        const sessionResult = await withTimeout(
+          supabase.auth.getSession(),
+          5000,
+          "Session check timed out"
+        );
+        
+        if (sessionResult.error || !sessionResult.data.session) {
+          console.log("[Session] No valid session, trying refresh");
+          const refreshResult = await withTimeout(
+            supabase.auth.refreshSession(),
+            5000,
+            "Session refresh timed out"
+          );
+          if (refreshResult.error || !refreshResult.data.session) {
+            throw new Error("Please log out and log in again.");
+          }
         }
-        console.log("[Session] Refreshed successfully");
+        console.log("[Session] OK");
+      } catch (sessionErr: any) {
+        console.error("[Session] Error:", sessionErr.message);
+        // On mobile, proceed anyway if we have userId - RLS will handle auth
+        if (!mobile) throw sessionErr;
+        console.log("[Session] Mobile: proceeding despite session check issue");
       }
-      
-      console.log("[Session] OK");
       setUploadProgress(20);
       setUploadStatus(mobile ? "Uploading (may take a moment)..." : "Uploading image...");
       
