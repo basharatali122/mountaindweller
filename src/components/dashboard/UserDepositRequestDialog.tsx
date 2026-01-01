@@ -31,53 +31,71 @@ const BANK_DETAILS = {
 // Max file size: 5MB
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 
-// Cloudinary direct upload (no edge function needed)
-const CLOUDINARY_CLOUD = 'dqbaaldf8';
-const CLOUDINARY_PRESET = 'ml_default'; // Default unsigned preset
-
-// Convert file to data URL (works better on mobile)
-const fileToDataUrl = (file: File | Blob): Promise<string> => {
+// Convert file to base64 data URL
+const fileToBase64 = (file: File | Blob): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
+    reader.onload = () => {
+      const result = reader.result as string;
+      // Extract base64 part after "data:image/jpeg;base64,"
+      const base64 = result.split(',')[1];
+      resolve(base64);
+    };
     reader.onerror = () => reject(new Error('Failed to read file'));
     reader.readAsDataURL(file);
   });
 };
 
-// Upload using Cloudinary widget approach (data URL)
-const uploadPaymentProof = async (file: File | Blob, userId: string): Promise<string> => {
-  const timestamp = Date.now();
-  const fileName = `payment_${userId}_${timestamp}`;
+// Upload via edge function with simple XHR
+const uploadPaymentProof = (file: File | Blob, userId: string): Promise<string> => {
+  return new Promise(async (resolve, reject) => {
+    try {
+      const timestamp = Date.now();
+      const fileName = `payment_${userId}_${timestamp}`;
 
-  console.log('Converting file to data URL...');
-  const dataUrl = await fileToDataUrl(file);
-  
-  console.log('Uploading to Cloudinary...', fileName);
+      console.log('Converting to base64...');
+      const base64 = await fileToBase64(file);
+      console.log('Base64 length:', base64.length);
 
-  // Create form with data URL
-  const formData = new FormData();
-  formData.append('file', dataUrl);
-  formData.append('upload_preset', CLOUDINARY_PRESET);
-  formData.append('public_id', fileName);
+      const xhr = new XMLHttpRequest();
+      const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/cloudinary-upload`;
 
-  const response = await fetch(
-    `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/image/upload`,
-    {
-      method: 'POST',
-      body: formData,
+      xhr.timeout = 120000;
+
+      xhr.onreadystatechange = () => {
+        if (xhr.readyState === 4) {
+          console.log('XHR done, status:', xhr.status);
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              const data = JSON.parse(xhr.responseText);
+              if (data.url) {
+                resolve(data.url);
+              } else {
+                reject(new Error(data.error || 'No URL'));
+              }
+            } catch {
+              reject(new Error('Invalid response'));
+            }
+          } else {
+            reject(new Error(`Upload failed: ${xhr.status}`));
+          }
+        }
+      };
+
+      xhr.onerror = () => reject(new Error('Network error'));
+      xhr.ontimeout = () => reject(new Error('Timeout'));
+
+      xhr.open('POST', url, true);
+      xhr.setRequestHeader('Content-Type', 'application/json');
+      xhr.send(JSON.stringify({
+        file: base64,
+        fileName,
+        contentType: file.type || 'image/jpeg',
+      }));
+    } catch (err: any) {
+      reject(err);
     }
-  );
-
-  if (!response.ok) {
-    const err = await response.text();
-    console.error('Cloudinary error:', err);
-    throw new Error('Upload failed');
-  }
-
-  const result = await response.json();
-  console.log('Cloudinary success:', result.secure_url);
-  return result.secure_url;
+  });
 };
 
 // Compress image on client side (optional, reduces upload time)
