@@ -36,26 +36,21 @@ const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/
 // Max file size: 5MB for mobile (Cloudinary handles compression), 10MB for desktop
 const MAX_FILE_SIZE = isMobile ? 5 * 1024 * 1024 : 10 * 1024 * 1024;
 
-// Upload directly to Cloudinary using FormData (most reliable for mobile)
-// This bypasses the edge function entirely and uses Cloudinary's unsigned upload
-const CLOUDINARY_CLOUD_NAME = 'dqbaaldf8';
-const CLOUDINARY_UPLOAD_PRESET = 'payment_proofs'; // Unsigned preset
-
+// Upload via edge function using FormData (avoids base64 issues on mobile)
 const uploadPaymentProof = async (file: File | Blob, fileName: string): Promise<string> => {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 90000); // 90 second timeout
 
   try {
-    // Use FormData - this is the most reliable method for mobile uploads
+    // Use FormData directly - more reliable than base64 on mobile
     const formData = new FormData();
-    formData.append('file', file);
-    formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
-    formData.append('public_id', fileName);
+    formData.append('file', file, fileName);
+    formData.append('fileName', fileName);
 
-    console.log('Starting direct Cloudinary upload:', { fileName, fileSize: file.size });
+    console.log('Starting FormData upload:', { fileName, fileSize: file.size });
 
     const response = await fetch(
-      `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/auto/upload`,
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/cloudinary-upload`,
       {
         method: 'POST',
         body: formData,
@@ -67,18 +62,18 @@ const uploadPaymentProof = async (file: File | Blob, fileName: string): Promise<
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      console.error('Cloudinary error:', response.status, errorData);
+      console.error('Upload error:', response.status, errorData);
       throw new Error(errorData.error?.message || `Upload failed: ${response.status}`);
     }
 
     const data = await response.json();
-    console.log('Cloudinary upload success:', data.secure_url);
+    console.log('Upload success:', data.url);
 
-    if (!data?.secure_url) {
-      throw new Error('No URL returned from Cloudinary');
+    if (!data?.url) {
+      throw new Error(data?.error || 'No URL returned from upload');
     }
 
-    return data.secure_url;
+    return data.url;
   } catch (error: any) {
     clearTimeout(timeoutId);
     console.error('Upload error:', error);
