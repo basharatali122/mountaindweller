@@ -36,69 +36,57 @@ const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/
 // Max file size: 5MB for mobile (Cloudinary handles compression), 10MB for desktop
 const MAX_FILE_SIZE = isMobile ? 5 * 1024 * 1024 : 10 * 1024 * 1024;
 
-// Upload via edge function using FormData (avoids base64 issues on mobile)
-const uploadPaymentProof = async (file: File | Blob, fileName: string): Promise<string> => {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minute timeout for slow mobile
+// Upload via XMLHttpRequest (more reliable on mobile than fetch)
+const uploadPaymentProof = (file: File | Blob, fileName: string): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const uploadUrl = `${supabaseUrl}/functions/v1/cloudinary-upload`;
 
-  try {
-    // Use FormData directly - more reliable than base64 on mobile
+    // Set timeout
+    xhr.timeout = 120000; // 2 minutes
+
+    xhr.onload = () => {
+      console.log('XHR completed, status:', xhr.status);
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const data = JSON.parse(xhr.responseText);
+          console.log('Upload success:', data.url);
+          if (data.url) {
+            resolve(data.url);
+          } else {
+            reject(new Error(data.error || 'No URL returned'));
+          }
+        } catch (e) {
+          console.error('Parse error:', e);
+          reject(new Error('Invalid response from server'));
+        }
+      } else {
+        console.error('XHR error status:', xhr.status, xhr.responseText);
+        reject(new Error(`Upload failed: ${xhr.status}`));
+      }
+    };
+
+    xhr.onerror = () => {
+      console.error('XHR network error');
+      reject(new Error('Network error. Please check your connection.'));
+    };
+
+    xhr.ontimeout = () => {
+      console.error('XHR timeout');
+      reject(new Error('Upload timed out. Please try with a smaller file.'));
+    };
+
+    // Create FormData
     const formData = new FormData();
     formData.append('file', file, fileName);
     formData.append('fileName', fileName);
 
-    console.log('Starting FormData upload:', { fileName, fileSize: file.size });
+    console.log('Starting XHR upload:', { fileName, fileSize: file.size });
 
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-    const uploadUrl = `${supabaseUrl}/functions/v1/cloudinary-upload`;
-    
-    console.log('Fetching:', uploadUrl);
-
-    const response = await fetch(uploadUrl, {
-      method: 'POST',
-      body: formData,
-      signal: controller.signal,
-      mode: 'cors',
-      credentials: 'omit', // Don't send credentials for simpler CORS
-    });
-
-    clearTimeout(timeoutId);
-    console.log('Response status:', response.status);
-
-    const responseText = await response.text();
-    console.log('Response text:', responseText);
-
-    if (!response.ok) {
-      let errorMessage = `Upload failed: ${response.status}`;
-      try {
-        const errorData = JSON.parse(responseText);
-        errorMessage = errorData.error || errorMessage;
-      } catch {}
-      throw new Error(errorMessage);
-    }
-
-    let data;
-    try {
-      data = JSON.parse(responseText);
-    } catch {
-      throw new Error('Invalid response from server');
-    }
-
-    console.log('Upload success:', data.url);
-
-    if (!data?.url) {
-      throw new Error(data?.error || 'No URL returned from upload');
-    }
-
-    return data.url;
-  } catch (error: any) {
-    clearTimeout(timeoutId);
-    console.error('Upload error:', error.name, error.message);
-    if (error.name === 'AbortError') {
-      throw new Error('Upload timed out. Please try again with a smaller file or better connection.');
-    }
-    throw error;
-  }
+    xhr.open('POST', uploadUrl, true);
+    xhr.send(formData);
+  });
 };
 
 // Compress image on client side (optional, reduces upload time)
