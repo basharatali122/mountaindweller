@@ -140,34 +140,46 @@ const withTimeout = <T,>(promise: Promise<T>, ms: number, errorMsg: string): Pro
   });
 };
 
-// Simple direct upload
+// Upload with timeout for mobile reliability
 const uploadFile = async (
   bucket: string,
   path: string,
-  file: File
+  file: File,
+  timeoutMs: number = 30000
 ): Promise<{ data: any; error: any }> => {
-  console.log('[Upload] Starting for:', path, formatFileSize(file.size));
+  console.log('[Upload] Starting for:', path, formatFileSize(file.size), 'timeout:', timeoutMs);
   
-  try {
-    const { data, error } = await supabase.storage
-      .from(bucket)
-      .upload(path, file, {
-        contentType: file.type || 'image/jpeg',
-        cacheControl: '3600',
-        upsert: true,
-      });
-
-    if (error) {
-      console.error('[Upload] Error:', error);
-      return { data: null, error };
-    }
+  return new Promise(async (resolve) => {
+    // Set timeout
+    const timeoutId = setTimeout(() => {
+      console.error('[Upload] Timeout after', timeoutMs, 'ms');
+      resolve({ data: null, error: { message: 'Upload timed out. Please try again on a better connection.' } });
+    }, timeoutMs);
     
-    console.log('[Upload] Success:', data);
-    return { data, error: null };
-  } catch (err: any) {
-    console.error('[Upload] Exception:', err);
-    return { data: null, error: { message: err.message || 'Upload failed' } };
-  }
+    try {
+      const { data, error } = await supabase.storage
+        .from(bucket)
+        .upload(path, file, {
+          contentType: file.type || 'image/jpeg',
+          cacheControl: '3600',
+          upsert: true,
+        });
+
+      clearTimeout(timeoutId);
+
+      if (error) {
+        console.error('[Upload] Error:', error);
+        resolve({ data: null, error });
+      } else {
+        console.log('[Upload] Success:', data);
+        resolve({ data, error: null });
+      }
+    } catch (err: any) {
+      clearTimeout(timeoutId);
+      console.error('[Upload] Exception:', err);
+      resolve({ data: null, error: { message: err.message || 'Upload failed' } });
+    }
+  });
 };
 
 export function UserDepositRequestDialog({
@@ -406,7 +418,8 @@ export function UserDepositRequestDialog({
       const { data: uploadData, error: uploadError } = await uploadFile(
         'payment-proofs',
         fileName,
-        proofFile
+        proofFile,
+        timeout // Pass timeout (30s mobile, 60s desktop)
       );
       
       clearInterval(progressInterval);
