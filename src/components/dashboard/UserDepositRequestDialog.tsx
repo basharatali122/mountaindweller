@@ -29,7 +29,6 @@ const BANK_DETAILS = {
   bank: "JS Bank",
 };
 
-// Mobile detection
 const isMobileDevice = (): boolean => {
   if (typeof navigator === 'undefined') return false;
   return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
@@ -41,15 +40,14 @@ const formatFileSize = (bytes: number): string => {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 };
 
-// Compress image with multiple quality attempts
-const compressImage = async (file: File, maxSizeKB: number = 500): Promise<File> => {
-  // Skip for small files
+// Aggressive compression - target very small files for mobile
+const compressImage = async (file: File, maxSizeKB: number = 300): Promise<File> => {
   if (file.size < maxSizeKB * 1024) {
-    console.log('[Compress] Skipping - already small:', formatFileSize(file.size));
+    console.log('[Compress] Already small:', formatFileSize(file.size));
     return file;
   }
 
-  console.log('[Compress] Starting for:', file.name, formatFileSize(file.size));
+  console.log('[Compress] Starting:', file.name, formatFileSize(file.size));
 
   return new Promise((resolve) => {
     const img = new Image();
@@ -57,7 +55,6 @@ const compressImage = async (file: File, maxSizeKB: number = 500): Promise<File>
     const ctx = canvas.getContext('2d');
 
     if (!ctx) {
-      console.warn('[Compress] Canvas not supported');
       resolve(file);
       return;
     }
@@ -65,9 +62,9 @@ const compressImage = async (file: File, maxSizeKB: number = 500): Promise<File>
     img.onload = () => {
       try {
         let { width, height } = img;
-        const maxDim = 1024; // Max dimension
+        // Very aggressive resize for mobile - max 800px
+        const maxDim = isMobileDevice() ? 800 : 1024;
 
-        // Scale down if needed
         if (width > maxDim || height > maxDim) {
           if (width > height) {
             height = Math.round((height * maxDim) / width);
@@ -84,25 +81,25 @@ const compressImage = async (file: File, maxSizeKB: number = 500): Promise<File>
         ctx.fillRect(0, 0, width, height);
         ctx.drawImage(img, 0, 0, width, height);
 
-        // Try different quality levels
-        const qualities = [0.6, 0.4, 0.3, 0.2];
+        // Start with low quality for mobile
+        const qualities = isMobileDevice() ? [0.4, 0.3, 0.2, 0.1] : [0.6, 0.4, 0.3, 0.2];
         
-        const tryCompress = (qualityIndex: number) => {
-          const quality = qualities[qualityIndex];
+        const tryCompress = (idx: number) => {
+          const quality = qualities[idx];
           canvas.toBlob(
             (blob) => {
               if (blob) {
-                console.log('[Compress] Quality', quality, '-> Size:', formatFileSize(blob.size));
+                console.log('[Compress] Q:', quality, 'Size:', formatFileSize(blob.size));
                 
-                if (blob.size <= maxSizeKB * 1024 || qualityIndex === qualities.length - 1) {
-                  const compressedFile = new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), {
+                if (blob.size <= maxSizeKB * 1024 || idx === qualities.length - 1) {
+                  const compressedFile = new File([blob], 'payment-proof.jpg', {
                     type: 'image/jpeg',
                     lastModified: Date.now(),
                   });
                   URL.revokeObjectURL(img.src);
                   resolve(compressedFile);
                 } else {
-                  tryCompress(qualityIndex + 1);
+                  tryCompress(idx + 1);
                 }
               } else {
                 URL.revokeObjectURL(img.src);
@@ -123,7 +120,6 @@ const compressImage = async (file: File, maxSizeKB: number = 500): Promise<File>
     };
 
     img.onerror = () => {
-      console.error('[Compress] Failed to load image');
       URL.revokeObjectURL(img.src);
       resolve(file);
     };
@@ -132,92 +128,54 @@ const compressImage = async (file: File, maxSizeKB: number = 500): Promise<File>
   });
 };
 
-// Robust upload with retries using fetch with AbortController
-const uploadWithRetry = async (
+// Simple upload using Supabase SDK with timeout
+const uploadWithSupabase = async (
   file: File,
   path: string,
-  accessToken: string,
-  onProgress: (percent: number, status: string) => void,
-  maxRetries: number = 3
+  onProgress: (status: string) => void,
+  timeoutMs: number = 30000
 ): Promise<{ success: boolean; error?: string }> => {
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-  const uploadUrl = `${supabaseUrl}/storage/v1/object/payment-proofs/${path}`;
-  
-  console.log('[Upload] URL:', uploadUrl);
-  console.log('[Upload] File size:', formatFileSize(file.size));
+  console.log('[SDK Upload] Starting:', path, formatFileSize(file.size));
+  onProgress('Uploading...');
 
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    console.log(`[Upload] Attempt ${attempt}/${maxRetries}`);
-    onProgress(10, `Uploading (attempt ${attempt})...`);
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => {
-      console.log('[Upload] Aborting due to timeout');
-      controller.abort();
-    }, 45000); // 45 second timeout
+  return new Promise(async (resolve) => {
+    const timer = setTimeout(() => {
+      console.log('[SDK Upload] Timeout');
+      resolve({ success: false, error: 'Upload timed out. Image may be too large.' });
+    }, timeoutMs);
 
     try {
-      const response = await fetch(uploadUrl, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': file.type || 'image/jpeg',
-          'x-upsert': 'true',
-          'Cache-Control': 'max-age=3600',
-        },
-        body: file,
-        signal: controller.signal,
-      });
+      const { data, error } = await supabase.storage
+        .from('payment-proofs')
+        .upload(path, file, {
+          cacheControl: '3600',
+          upsert: true,
+        });
 
-      clearTimeout(timeoutId);
+      clearTimeout(timer);
 
-      console.log('[Upload] Response status:', response.status);
-
-      if (response.ok) {
-        onProgress(85, 'Upload complete');
-        return { success: true };
-      }
-
-      // Handle specific error codes
-      if (response.status === 401 || response.status === 403) {
-        return { success: false, error: 'Session expired. Please log out and log in again.' };
-      }
-
-      if (response.status >= 500) {
-        console.error('[Upload] Server error:', response.status);
-        if (attempt === maxRetries) {
-          return { success: false, error: 'Server error. Please try again later.' };
+      if (error) {
+        console.error('[SDK Upload] Error:', error);
+        
+        // Check for specific errors
+        if (error.message?.includes('row-level security') || error.message?.includes('policy')) {
+          resolve({ success: false, error: 'Permission denied. Please log out and log in again.' });
+        } else if (error.message?.includes('Payload too large')) {
+          resolve({ success: false, error: 'Image too large. Please select a smaller image.' });
+        } else {
+          resolve({ success: false, error: error.message || 'Upload failed' });
         }
-        await new Promise(r => setTimeout(r, 2000 * attempt)); // Wait before retry
-        continue;
+        return;
       }
 
-      const errorText = await response.text().catch(() => 'Unknown error');
-      console.error('[Upload] Error response:', errorText);
-      return { success: false, error: `Upload failed: ${response.status}` };
-
-    } catch (error: any) {
-      clearTimeout(timeoutId);
-      console.error(`[Upload] Attempt ${attempt} error:`, error.name, error.message);
-
-      if (error.name === 'AbortError') {
-        onProgress(10, 'Timed out, retrying...');
-        if (attempt === maxRetries) {
-          return { success: false, error: 'Upload timed out. Try with a smaller image or better connection.' };
-        }
-        continue;
-      }
-
-      if (attempt === maxRetries) {
-        return { success: false, error: 'Connection failed. Check your internet and try again.' };
-      }
-
-      // Wait before retry
-      await new Promise(r => setTimeout(r, 1500 * attempt));
+      console.log('[SDK Upload] Success:', data);
+      resolve({ success: true });
+    } catch (err: any) {
+      clearTimeout(timer);
+      console.error('[SDK Upload] Exception:', err);
+      resolve({ success: false, error: err.message || 'Upload failed' });
     }
-  }
-
-  return { success: false, error: 'Upload failed after multiple attempts.' };
+  });
 };
 
 export function UserDepositRequestDialog({
@@ -236,23 +194,15 @@ export function UserDepositRequestDialog({
   const [uploadFailed, setUploadFailed] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
+  const [errorDetails, setErrorDetails] = useState<string>("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setIsOnline(navigator.onLine);
     setIsMobile(isMobileDevice());
 
-    const handleOnline = () => {
-      console.log('[Network] Back online');
-      setIsOnline(true);
-      toast({ title: "Back online", description: "You can now upload" });
-    };
-
-    const handleOffline = () => {
-      console.log('[Network] Went offline');
-      setIsOnline(false);
-      toast({ title: "No internet", description: "Check your connection", variant: "destructive" });
-    };
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
@@ -260,7 +210,7 @@ export function UserDepositRequestDialog({
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, [toast]);
+  }, []);
 
   const copyToClipboard = (text: string, field: string) => {
     navigator.clipboard.writeText(text);
@@ -272,7 +222,7 @@ export function UserDepositRequestDialog({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    console.log('[FileSelect] Original:', file.name, formatFileSize(file.size), file.type);
+    console.log('[File] Selected:', file.name, formatFileSize(file.size), file.type);
 
     if (!file.type.startsWith("image/")) {
       toast({ title: "Invalid file", description: "Please upload an image", variant: "destructive" });
@@ -280,37 +230,32 @@ export function UserDepositRequestDialog({
     }
 
     if (file.size > 15 * 1024 * 1024) {
-      toast({ title: "File too large", description: "Max 15MB allowed", variant: "destructive" });
+      toast({ title: "File too large", description: "Max 15MB", variant: "destructive" });
       return;
     }
 
-    setUploadStatus("Optimizing image...");
+    setUploadStatus("Optimizing...");
     
     try {
-      // Aggressively compress for mobile - target 500KB max
-      const targetSize = isMobileDevice() ? 400 : 600;
-      const processedFile = await compressImage(file, targetSize);
+      // Target 200KB for mobile, 400KB for desktop
+      const targetKB = isMobileDevice() ? 200 : 400;
+      const processedFile = await compressImage(file, targetKB);
       
-      console.log('[FileSelect] Processed:', formatFileSize(processedFile.size));
+      console.log('[File] Processed:', formatFileSize(processedFile.size));
       
       setProofFile(processedFile);
       setUploadFailed(false);
+      setErrorDetails("");
       setUploadStatus("");
-      
-      const saved = file.size !== processedFile.size 
-        ? ` (optimized from ${formatFileSize(file.size)})` 
-        : '';
       
       toast({ 
-        title: "Image ready", 
-        description: `${formatFileSize(processedFile.size)}${saved}` 
+        title: "Ready", 
+        description: `Image optimized to ${formatFileSize(processedFile.size)}` 
       });
     } catch (error) {
-      console.error('[FileSelect] Error:', error);
-      setProofFile(file);
-      setUploadFailed(false);
+      console.error('[File] Error:', error);
       setUploadStatus("");
-      toast({ title: "Image selected", description: formatFileSize(file.size) });
+      toast({ title: "Error", description: "Could not process image", variant: "destructive" });
     }
   };
 
@@ -332,73 +277,88 @@ export function UserDepositRequestDialog({
     }
 
     setIsLoading(true);
-    setUploadProgress(0);
-    setUploadStatus("Starting...");
+    setUploadProgress(10);
+    setUploadStatus("Checking session...");
     setUploadFailed(false);
+    setErrorDetails("");
 
     try {
-      console.log("=== DEPOSIT UPLOAD START ===");
-      console.log("[File]", proofFile.name, formatFileSize(proofFile.size));
+      console.log("=== UPLOAD START ===");
+      console.log("[File]", formatFileSize(proofFile.size));
       
-      // Get session
-      setUploadProgress(5);
-      setUploadStatus("Checking login...");
+      // Check session first
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
       
-      let accessToken: string | null = null;
-
-      // Quick session check with short timeout
-      const sessionPromise = supabase.auth.getSession();
-      const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000));
-      
-      const sessionResult = await Promise.race([sessionPromise, timeoutPromise]);
-      
-      if (sessionResult && 'data' in sessionResult && sessionResult.data.session?.access_token) {
-        accessToken = sessionResult.data.session.access_token;
-        console.log("[Session] Got token");
-      } else {
+      if (sessionError || !session) {
+        console.error('[Session] Error:', sessionError);
         // Try refresh
-        setUploadStatus("Refreshing session...");
-        try {
-          const refreshResult = await Promise.race([
-            supabase.auth.refreshSession(),
-            new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000))
-          ]);
-          
-          if (refreshResult && 'data' in refreshResult && refreshResult.data.session?.access_token) {
-            accessToken = refreshResult.data.session.access_token;
-            console.log("[Session] Got token after refresh");
-          }
-        } catch (e) {
-          console.error("[Session] Refresh failed:", e);
+        const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+        if (refreshError || !refreshData.session) {
+          throw new Error("Please log out and log in again.");
         }
       }
 
-      if (!accessToken) {
-        throw new Error("Session expired. Please log out and log in again.");
+      const currentUserId = session?.user?.id || (await supabase.auth.getUser()).data.user?.id;
+      console.log('[Session] User ID:', currentUserId);
+      
+      if (!currentUserId) {
+        throw new Error("Not logged in. Please refresh and try again.");
       }
 
-      // Upload file with retries
-      const ext = proofFile.name.split('.').pop()?.toLowerCase() || 'jpg';
-      const fileName = `${userId}/${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
+      // IMPORTANT: Use user's auth ID as folder name (RLS requires this)
+      setUploadProgress(20);
+      setUploadStatus("Uploading...");
       
-      const uploadResult = await uploadWithRetry(
-        proofFile,
-        fileName,
-        accessToken,
-        (percent, status) => {
-          setUploadProgress(percent);
-          setUploadStatus(status);
-        },
-        3 // 3 retries
-      );
+      const timestamp = Date.now();
+      const randomStr = Math.random().toString(36).substring(2, 8);
+      // Path format: {user_id}/{filename} - RLS policy checks foldername matches auth.uid()
+      const filePath = `${currentUserId}/${timestamp}_${randomStr}.jpg`;
+      
+      console.log('[Upload] Path:', filePath);
 
-      if (!uploadResult.success) {
-        throw new Error(uploadResult.error || 'Upload failed');
+      // Try upload with retries
+      let uploadSuccess = false;
+      let lastError = '';
+      
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        console.log(`[Upload] Attempt ${attempt}/3`);
+        setUploadStatus(`Uploading (attempt ${attempt})...`);
+        setUploadProgress(20 + (attempt - 1) * 20);
+
+        const result = await uploadWithSupabase(
+          proofFile,
+          filePath,
+          (status) => setUploadStatus(status),
+          isMobile ? 25000 : 45000 // Shorter timeout for mobile
+        );
+
+        if (result.success) {
+          uploadSuccess = true;
+          break;
+        }
+
+        lastError = result.error || 'Unknown error';
+        console.log('[Upload] Failed:', lastError);
+
+        // Don't retry on permission errors
+        if (lastError.includes('Permission') || lastError.includes('policy') || lastError.includes('log out')) {
+          break;
+        }
+
+        // Wait before retry
+        if (attempt < 3) {
+          await new Promise(r => setTimeout(r, 2000));
+        }
+      }
+
+      if (!uploadSuccess) {
+        setErrorDetails(lastError);
+        throw new Error(lastError);
       }
 
       // Save to database
-      setUploadProgress(90);
-      setUploadStatus("Saving request...");
+      setUploadProgress(85);
+      setUploadStatus("Saving...");
 
       const { error: insertError } = await supabase
         .from("deposit_requests")
@@ -406,19 +366,19 @@ export function UserDepositRequestDialog({
           user_id: userId,
           amount: depositAmount,
           bank_reference: bankReference || null,
-          payment_proof_url: fileName,
+          payment_proof_url: filePath,
         });
 
       if (insertError) {
-        console.error("[Insert] Error:", insertError);
-        throw new Error("Failed to save request. Please try again.");
+        console.error("[DB] Error:", insertError);
+        throw new Error("Failed to save. Please try again.");
       }
 
-      console.log("=== DEPOSIT SUCCESS ===");
+      console.log("=== SUCCESS ===");
       setUploadProgress(100);
       setUploadStatus("Done!");
 
-      toast({ title: "Request submitted", description: "Your deposit is being reviewed" });
+      toast({ title: "Submitted!", description: "Your deposit is being reviewed" });
 
       // Reset
       setAmount("");
@@ -431,25 +391,24 @@ export function UserDepositRequestDialog({
       onSuccess?.();
 
     } catch (error: any) {
-      console.error("=== DEPOSIT FAILED ===", error);
+      console.error("=== FAILED ===", error);
       setUploadFailed(true);
       setUploadStatus("Failed");
-      toast({ title: "Failed", description: error.message || "Please try again", variant: "destructive" });
+      toast({ title: "Failed", description: error.message, variant: "destructive" });
     } finally {
       setIsLoading(false);
     }
-  }, [amount, proofFile, bankReference, userId, toast, onSuccess]);
+  }, [amount, proofFile, bankReference, userId, toast, onSuccess, isMobile]);
 
   const handleRetry = () => {
     if (!navigator.onLine) {
-      toast({ title: "Still offline", description: "Wait for connection", variant: "destructive" });
+      toast({ title: "Offline", description: "Check connection", variant: "destructive" });
       return;
     }
     setUploadFailed(false);
+    setErrorDetails("");
     handleSubmit();
   };
-
-  const maxSizeText = isMobile ? "3MB" : "5MB";
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -470,7 +429,7 @@ export function UserDepositRequestDialog({
         {!isOnline && (
           <div className="flex items-center gap-2 p-3 bg-destructive/10 text-destructive rounded-lg text-sm">
             <WifiOff className="w-4 h-4" />
-            <span>You're offline. Please check your connection.</span>
+            <span>You're offline</span>
           </div>
         )}
 
@@ -563,25 +522,25 @@ export function UserDepositRequestDialog({
             </div>
           </div>
 
-          {/* Amount Input */}
+          {/* Amount */}
           <div className="space-y-2">
             <Label htmlFor="amount">Deposit Amount (PKR)</Label>
             <Input
               id="amount"
               type="number"
-              placeholder="Enter amount (min. 1,000)"
+              placeholder="Min. 1,000"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               disabled={isLoading}
             />
           </div>
 
-          {/* Bank Reference */}
+          {/* Reference */}
           <div className="space-y-2">
             <Label htmlFor="bankReference">Bank Reference (Optional)</Label>
             <Input
               id="bankReference"
-              placeholder="Transaction ID or reference number"
+              placeholder="Transaction ID"
               value={bankReference}
               onChange={(e) => setBankReference(e.target.value)}
               disabled={isLoading}
@@ -590,7 +549,7 @@ export function UserDepositRequestDialog({
 
           {/* File Upload */}
           <div className="space-y-2">
-            <Label>Payment Proof Screenshot</Label>
+            <Label>Payment Screenshot</Label>
             <div className="border-2 border-dashed border-border rounded-lg p-4">
               <Input
                 ref={fileInputRef}
@@ -608,30 +567,22 @@ export function UserDepositRequestDialog({
                 {proofFile ? (
                   <>
                     <ImageIcon className="w-8 h-8 text-primary" />
-                    <span className="text-sm font-medium text-foreground">
-                      {proofFile.name}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      {formatFileSize(proofFile.size)}
-                    </span>
+                    <span className="text-sm font-medium">{proofFile.name}</span>
+                    <span className="text-xs text-muted-foreground">{formatFileSize(proofFile.size)}</span>
                     <span className="text-xs text-primary">Tap to change</span>
                   </>
                 ) : (
                   <>
                     <Upload className="w-8 h-8 text-muted-foreground" />
-                    <span className="text-sm text-muted-foreground">
-                      Tap to upload screenshot
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      Max {maxSizeText} • Auto-optimized
-                    </span>
+                    <span className="text-sm text-muted-foreground">Tap to upload</span>
+                    <span className="text-xs text-muted-foreground">Auto-compressed for fast upload</span>
                   </>
                 )}
               </label>
             </div>
           </div>
 
-          {/* Upload Progress */}
+          {/* Progress */}
           {isLoading && (
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
@@ -639,33 +590,30 @@ export function UserDepositRequestDialog({
                 <span className="font-medium">{uploadProgress}%</span>
               </div>
               <Progress value={uploadProgress} className="h-2" />
-              {isMobile && uploadProgress > 10 && uploadProgress < 85 && (
-                <p className="text-xs text-muted-foreground text-center">
-                  Keep the screen on...
-                </p>
-              )}
             </div>
           )}
 
-          {/* Upload Failed */}
+          {/* Error */}
           {uploadFailed && !isLoading && (
-            <div className="flex items-center gap-2 p-3 bg-destructive/10 text-destructive rounded-lg text-sm">
-              <WifiOff className="w-4 h-4 flex-shrink-0" />
-              <span>Upload failed. Tap retry to try again.</span>
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 p-3 bg-destructive/10 text-destructive rounded-lg text-sm">
+                <WifiOff className="w-4 h-4 flex-shrink-0" />
+                <span>Upload failed</span>
+              </div>
+              {errorDetails && (
+                <p className="text-xs text-muted-foreground px-1">
+                  Error: {errorDetails}
+                </p>
+              )}
             </div>
           )}
         </div>
 
         <DialogFooter className="flex-col sm:flex-row gap-2">
           {uploadFailed && proofFile && !isLoading && (
-            <Button
-              variant="outline"
-              onClick={handleRetry}
-              className="w-full sm:w-auto"
-              disabled={!isOnline}
-            >
+            <Button variant="outline" onClick={handleRetry} className="w-full sm:w-auto" disabled={!isOnline}>
               <RefreshCw className="w-4 h-4 mr-2" />
-              Retry Upload
+              Retry
             </Button>
           )}
           <Button
@@ -676,7 +624,7 @@ export function UserDepositRequestDialog({
             {isLoading ? (
               <>
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                {uploadStatus || "Uploading..."}
+                {uploadStatus}
               </>
             ) : !isOnline ? (
               <>
@@ -684,7 +632,7 @@ export function UserDepositRequestDialog({
                 Offline
               </>
             ) : (
-              "Submit Deposit Request"
+              "Submit"
             )}
           </Button>
         </DialogFooter>
