@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef } from "react";
 import {
   Dialog,
   DialogContent,
@@ -11,10 +11,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Progress } from "@/components/ui/progress";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Upload, Wallet, Copy, CheckCircle, ImageIcon, RefreshCw, WifiOff } from "lucide-react";
+import { Loader2, Upload, Wallet, Copy, CheckCircle, ImageIcon } from "lucide-react";
 
 interface UserDepositRequestDialogProps {
   userId: string;
@@ -29,97 +28,6 @@ const BANK_DETAILS = {
   bank: "JS Bank",
 };
 
-const formatFileSize = (bytes: number): string => {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-};
-
-// Simple image compression for mobile
-const compressImage = async (file: File): Promise<File> => {
-  // Skip if already small
-  if (file.size <= 500 * 1024) {
-    return file;
-  }
-
-  return new Promise((resolve) => {
-    const img = new Image();
-    const canvas = document.createElement("canvas");
-    let objectUrl: string | null = null;
-
-    const cleanup = () => {
-      if (objectUrl) {
-        URL.revokeObjectURL(objectUrl);
-      }
-    };
-
-    // Timeout fallback
-    const timeout = setTimeout(() => {
-      cleanup();
-      resolve(file);
-    }, 15000);
-
-    img.onload = () => {
-      clearTimeout(timeout);
-      try {
-        const ctx = canvas.getContext("2d");
-        if (!ctx) {
-          cleanup();
-          resolve(file);
-          return;
-        }
-
-        let { width, height } = img;
-        const maxDim = 1024;
-
-        if (width > maxDim || height > maxDim) {
-          if (width > height) {
-            height = Math.round((height * maxDim) / width);
-            width = maxDim;
-          } else {
-            width = Math.round((width * maxDim) / height);
-            height = maxDim;
-          }
-        }
-
-        canvas.width = width;
-        canvas.height = height;
-        ctx.fillStyle = "#FFFFFF";
-        ctx.fillRect(0, 0, width, height);
-        ctx.drawImage(img, 0, 0, width, height);
-
-        canvas.toBlob(
-          (blob) => {
-            cleanup();
-            if (blob && blob.size < file.size) {
-              resolve(new File([blob], file.name.replace(/\.[^/.]+$/, ".jpg"), {
-                type: "image/jpeg",
-                lastModified: Date.now(),
-              }));
-            } else {
-              resolve(file);
-            }
-          },
-          "image/jpeg",
-          0.7
-        );
-      } catch {
-        cleanup();
-        resolve(file);
-      }
-    };
-
-    img.onerror = () => {
-      clearTimeout(timeout);
-      cleanup();
-      resolve(file);
-    };
-
-    objectUrl = URL.createObjectURL(file);
-    img.src = objectUrl;
-  });
-};
-
 export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositRequestDialogProps) {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
@@ -127,25 +35,8 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
   const [bankReference, setBankReference] = useState("");
   const [proofFile, setProofFile] = useState<File | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [uploadStatus, setUploadStatus] = useState("");
   const [copiedField, setCopiedField] = useState<string | null>(null);
-  const [uploadFailed, setUploadFailed] = useState(false);
-  const [isOnline, setIsOnline] = useState(true);
-  const [errorMessage, setErrorMessage] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    setIsOnline(navigator.onLine);
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-    window.addEventListener("online", handleOnline);
-    window.addEventListener("offline", handleOffline);
-    return () => {
-      window.removeEventListener("online", handleOnline);
-      window.removeEventListener("offline", handleOffline);
-    };
-  }, []);
 
   const copyToClipboard = (text: string, field: string) => {
     navigator.clipboard.writeText(text);
@@ -153,7 +44,7 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
     setTimeout(() => setCopiedField(null), 2000);
   };
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -162,33 +53,18 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
       return;
     }
 
-    if (file.size > 10 * 1024 * 1024) {
-      toast({ title: "File too large", description: "Maximum 10MB", variant: "destructive" });
+    if (file.size > 5 * 1024 * 1024) {
+      toast({ title: "File too large", description: "Maximum 5MB", variant: "destructive" });
       return;
     }
 
-    setUploadStatus("Preparing...");
-    try {
-      const compressed = await compressImage(file);
-      setProofFile(compressed);
-      setUploadFailed(false);
-      setErrorMessage("");
-      setUploadStatus("");
-      toast({ title: "Image ready", description: formatFileSize(compressed.size) });
-    } catch {
-      setProofFile(file);
-      setUploadStatus("");
-    }
+    setProofFile(file);
+    toast({ title: "Image selected", description: file.name });
   };
 
   const handleSubmit = async () => {
     if (!amount || !proofFile) {
       toast({ title: "Missing info", description: "Enter amount and upload proof", variant: "destructive" });
-      return;
-    }
-
-    if (!isOnline) {
-      toast({ title: "Offline", description: "Check your internet connection", variant: "destructive" });
       return;
     }
 
@@ -199,99 +75,69 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
     }
 
     setIsLoading(true);
-    setUploadProgress(10);
-    setUploadStatus("Starting...");
-    setUploadFailed(false);
-    setErrorMessage("");
 
     try {
-      // Check session first
-      setUploadProgress(20);
-      setUploadStatus("Authenticating...");
+      // Generate unique file path
+      const timestamp = Date.now();
+      const randomStr = Math.random().toString(36).substring(2, 8);
+      const extension = proofFile.name.split(".").pop() || "jpg";
+      const filePath = `${userId}/${timestamp}_${randomStr}.${extension}`;
 
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError || !session) {
-        throw new Error("Please log in again");
+      console.log("Uploading file to:", filePath);
+
+      // Upload to storage
+      const { error: uploadError } = await supabase.storage
+        .from("payment-proofs")
+        .upload(filePath, proofFile, {
+          cacheControl: "3600",
+          upsert: true,
+        });
+
+      if (uploadError) {
+        console.error("Storage upload error:", uploadError);
+        throw new Error("Failed to upload image: " + uploadError.message);
       }
 
-      // Convert file to base64 for edge function
-      setUploadProgress(40);
-      setUploadStatus("Preparing image...");
+      console.log("File uploaded successfully");
 
-      const arrayBuffer = await proofFile.arrayBuffer();
-      const base64 = btoa(
-        new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
-      );
-
-      // Call edge function using supabase client
-      setUploadProgress(60);
-      setUploadStatus("Uploading...");
-
-      const { data, error } = await supabase.functions.invoke("upload-payment-proof", {
-        body: {
-          file: base64,
-          fileName: proofFile.name,
-          fileType: proofFile.type,
-          amount: amount,
-          bankReference: bankReference || null,
-        },
+      // Create deposit request
+      const { error: insertError } = await supabase.from("deposit_requests").insert({
+        user_id: userId,
+        amount: depositAmount,
+        bank_reference: bankReference || null,
+        payment_proof_url: filePath,
       });
 
-      setUploadProgress(85);
-      setUploadStatus("Processing...");
-
-      if (error) {
-        console.error("Edge function error:", error);
-        throw new Error(error.message || "Upload failed");
+      if (insertError) {
+        console.error("Insert error:", insertError);
+        // Try to clean up the uploaded file
+        await supabase.storage.from("payment-proofs").remove([filePath]);
+        throw new Error("Failed to submit request: " + insertError.message);
       }
-
-      if (!data?.success) {
-        throw new Error(data?.error || "Upload failed");
-      }
-
-      setUploadProgress(100);
-      setUploadStatus("Done!");
 
       toast({
         title: "Success!",
         description: "Deposit request submitted for review",
       });
 
-      // Reset form
-      setTimeout(() => {
-        setAmount("");
-        setBankReference("");
-        setProofFile(null);
-        setUploadProgress(0);
-        setUploadStatus("");
-        if (fileInputRef.current) fileInputRef.current.value = "";
-        setOpen(false);
-        onSuccess?.();
-      }, 1000);
+      // Reset and close
+      setAmount("");
+      setBankReference("");
+      setProofFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      setOpen(false);
+      onSuccess?.();
 
     } catch (error: any) {
-      console.error("Upload error:", error);
-      setUploadFailed(true);
-      setUploadStatus("Failed");
-      setErrorMessage(error.message || "Upload failed");
+      console.error("Submit error:", error);
       toast({
-        title: "Upload failed",
+        title: "Failed",
         description: error.message || "Please try again",
         variant: "destructive",
       });
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const handleRetry = () => {
-    if (!isOnline) {
-      toast({ title: "Offline", description: "Check connection", variant: "destructive" });
-      return;
-    }
-    setUploadFailed(false);
-    setErrorMessage("");
-    handleSubmit();
   };
 
   return (
@@ -307,13 +153,6 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
           <DialogTitle>Deposit Funds</DialogTitle>
           <DialogDescription>Transfer to our bank and upload payment proof</DialogDescription>
         </DialogHeader>
-
-        {!isOnline && (
-          <div className="flex items-center gap-2 p-3 bg-destructive/10 text-destructive rounded-lg text-sm">
-            <WifiOff className="w-4 h-4" />
-            <span>You're offline</span>
-          </div>
-        )}
 
         <div className="space-y-6 py-4">
           {/* Bank Details */}
@@ -410,50 +249,28 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
                 <div className="flex flex-col items-center gap-2">
                   <CheckCircle className="w-8 h-8 text-primary" />
                   <p className="text-sm font-medium text-foreground">{proofFile.name}</p>
-                  <p className="text-xs text-muted-foreground">{formatFileSize(proofFile.size)}</p>
+                  <p className="text-xs text-muted-foreground">{(proofFile.size / 1024).toFixed(1)} KB</p>
                 </div>
               ) : (
                 <div className="flex flex-col items-center gap-2">
                   <ImageIcon className="w-8 h-8 text-muted-foreground" />
                   <p className="text-sm text-muted-foreground">Tap to select payment screenshot</p>
+                  <p className="text-xs text-muted-foreground">Max 5MB</p>
                 </div>
               )}
             </div>
-            {uploadStatus && !uploadFailed && (
-              <p className="text-xs text-muted-foreground">{uploadStatus}</p>
-            )}
           </div>
-
-          {/* Upload Progress */}
-          {isLoading && uploadProgress > 0 && (
-            <div className="space-y-2">
-              <Progress value={uploadProgress} className="h-2" />
-              <p className="text-xs text-center text-muted-foreground">{uploadStatus}</p>
-            </div>
-          )}
-
-          {/* Error and Retry */}
-          {uploadFailed && (
-            <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-4 space-y-3">
-              <p className="text-sm text-destructive font-medium">Upload failed</p>
-              {errorMessage && <p className="text-xs text-destructive/80">{errorMessage}</p>}
-              <Button variant="outline" size="sm" onClick={handleRetry} className="w-full">
-                <RefreshCw className="w-4 h-4 mr-2" />
-                Try Again
-              </Button>
-            </div>
-          )}
         </div>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)} disabled={isLoading}>
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={isLoading || !proofFile || !amount || !isOnline}>
+          <Button onClick={handleSubmit} disabled={isLoading || !proofFile || !amount}>
             {isLoading ? (
               <>
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Uploading...
+                Submitting...
               </>
             ) : (
               <>
