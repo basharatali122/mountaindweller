@@ -36,39 +36,29 @@ const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/
 // Max file size: 5MB for mobile (Cloudinary handles compression), 10MB for desktop
 const MAX_FILE_SIZE = isMobile ? 5 * 1024 * 1024 : 10 * 1024 * 1024;
 
-// Upload via direct fetch to edge function (more reliable on mobile than supabase.functions.invoke)
-const uploadPaymentProof = async (file: File | Blob, fileName: string): Promise<string> => {
-  // Convert file to base64 in chunks to avoid memory issues on mobile
-  const arrayBuffer = await file.arrayBuffer();
-  const bytes = new Uint8Array(arrayBuffer);
-  
-  // Process in chunks to avoid call stack issues on mobile
-  const CHUNK_SIZE = 8192;
-  let binary = '';
-  for (let i = 0; i < bytes.length; i += CHUNK_SIZE) {
-    const chunk = bytes.slice(i, i + CHUNK_SIZE);
-    binary += String.fromCharCode.apply(null, Array.from(chunk));
-  }
-  const base64 = btoa(binary);
+// Upload directly to Cloudinary using FormData (most reliable for mobile)
+// This bypasses the edge function entirely and uses Cloudinary's unsigned upload
+const CLOUDINARY_CLOUD_NAME = 'dqbaaldf8';
+const CLOUDINARY_UPLOAD_PRESET = 'payment_proofs'; // Unsigned preset
 
-  // Use direct fetch with timeout instead of supabase.functions.invoke
-  // This is more reliable on mobile networks
+const uploadPaymentProof = async (file: File | Blob, fileName: string): Promise<string> => {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
+  const timeoutId = setTimeout(() => controller.abort(), 90000); // 90 second timeout
 
   try {
+    // Use FormData - this is the most reliable method for mobile uploads
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+    formData.append('public_id', fileName);
+
+    console.log('Starting direct Cloudinary upload:', { fileName, fileSize: file.size });
+
     const response = await fetch(
-      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/cloudinary-upload`,
+      `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/auto/upload`,
       {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          file: base64,
-          fileName,
-          contentType: file instanceof File ? file.type : 'image/jpeg',
-        }),
+        body: formData,
         signal: controller.signal,
       }
     );
@@ -76,20 +66,22 @@ const uploadPaymentProof = async (file: File | Blob, fileName: string): Promise<
     clearTimeout(timeoutId);
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Upload response error:', response.status, errorText);
-      throw new Error(`Upload failed: ${response.status}`);
+      const errorData = await response.json().catch(() => ({}));
+      console.error('Cloudinary error:', response.status, errorData);
+      throw new Error(errorData.error?.message || `Upload failed: ${response.status}`);
     }
 
     const data = await response.json();
+    console.log('Cloudinary upload success:', data.secure_url);
 
-    if (!data?.url) {
-      throw new Error(data?.error || 'No URL returned from upload');
+    if (!data?.secure_url) {
+      throw new Error('No URL returned from Cloudinary');
     }
 
-    return data.url;
+    return data.secure_url;
   } catch (error: any) {
     clearTimeout(timeoutId);
+    console.error('Upload error:', error);
     if (error.name === 'AbortError') {
       throw new Error('Upload timed out. Please try again with a smaller file or better connection.');
     }
