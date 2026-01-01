@@ -39,7 +39,7 @@ const MAX_FILE_SIZE = isMobile ? 5 * 1024 * 1024 : 10 * 1024 * 1024;
 // Upload via edge function using FormData (avoids base64 issues on mobile)
 const uploadPaymentProof = async (file: File | Blob, fileName: string): Promise<string> => {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 90000); // 90 second timeout
+  const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minute timeout for slow mobile
 
   try {
     // Use FormData directly - more reliable than base64 on mobile
@@ -49,24 +49,41 @@ const uploadPaymentProof = async (file: File | Blob, fileName: string): Promise<
 
     console.log('Starting FormData upload:', { fileName, fileSize: file.size });
 
-    const response = await fetch(
-      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/cloudinary-upload`,
-      {
-        method: 'POST',
-        body: formData,
-        signal: controller.signal,
-      }
-    );
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const uploadUrl = `${supabaseUrl}/functions/v1/cloudinary-upload`;
+    
+    console.log('Fetching:', uploadUrl);
+
+    const response = await fetch(uploadUrl, {
+      method: 'POST',
+      body: formData,
+      signal: controller.signal,
+      mode: 'cors',
+      credentials: 'omit', // Don't send credentials for simpler CORS
+    });
 
     clearTimeout(timeoutId);
+    console.log('Response status:', response.status);
+
+    const responseText = await response.text();
+    console.log('Response text:', responseText);
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      console.error('Upload error:', response.status, errorData);
-      throw new Error(errorData.error?.message || `Upload failed: ${response.status}`);
+      let errorMessage = `Upload failed: ${response.status}`;
+      try {
+        const errorData = JSON.parse(responseText);
+        errorMessage = errorData.error || errorMessage;
+      } catch {}
+      throw new Error(errorMessage);
     }
 
-    const data = await response.json();
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch {
+      throw new Error('Invalid response from server');
+    }
+
     console.log('Upload success:', data.url);
 
     if (!data?.url) {
@@ -76,7 +93,7 @@ const uploadPaymentProof = async (file: File | Blob, fileName: string): Promise<
     return data.url;
   } catch (error: any) {
     clearTimeout(timeoutId);
-    console.error('Upload error:', error);
+    console.error('Upload error:', error.name, error.message);
     if (error.name === 'AbortError') {
       throw new Error('Upload timed out. Please try again with a smaller file or better connection.');
     }
