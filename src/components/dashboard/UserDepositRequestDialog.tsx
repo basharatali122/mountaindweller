@@ -140,45 +140,85 @@ const withTimeout = <T,>(promise: Promise<T>, ms: number, errorMsg: string): Pro
   });
 };
 
-// Upload with timeout for mobile reliability
-const uploadFile = async (
+// Upload using XMLHttpRequest for better mobile reliability and real progress
+const uploadFileWithXHR = async (
   bucket: string,
   path: string,
   file: File,
-  timeoutMs: number = 30000
+  accessToken: string,
+  onProgress: (percent: number) => void,
+  timeoutMs: number = 60000
 ): Promise<{ data: any; error: any }> => {
-  console.log('[Upload] Starting for:', path, formatFileSize(file.size), 'timeout:', timeoutMs);
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const uploadUrl = `${supabaseUrl}/storage/v1/object/${bucket}/${path}`;
   
-  return new Promise(async (resolve) => {
-    // Set timeout
-    const timeoutId = setTimeout(() => {
-      console.error('[Upload] Timeout after', timeoutMs, 'ms');
-      resolve({ data: null, error: { message: 'Upload timed out. Please try again on a better connection.' } });
-    }, timeoutMs);
+  console.log('[XHR Upload] Starting:', path, formatFileSize(file.size));
+  console.log('[XHR Upload] URL:', uploadUrl);
+  
+  return new Promise((resolve) => {
+    const xhr = new XMLHttpRequest();
     
-    try {
-      const { data, error } = await supabase.storage
-        .from(bucket)
-        .upload(path, file, {
-          contentType: file.type || 'image/jpeg',
-          cacheControl: '3600',
-          upsert: true,
-        });
-
-      clearTimeout(timeoutId);
-
-      if (error) {
-        console.error('[Upload] Error:', error);
-        resolve({ data: null, error });
-      } else {
-        console.log('[Upload] Success:', data);
-        resolve({ data, error: null });
+    // Timeout handler
+    xhr.timeout = timeoutMs;
+    xhr.ontimeout = () => {
+      console.error('[XHR Upload] Timeout after', timeoutMs, 'ms');
+      resolve({ data: null, error: { message: 'Upload timed out. Please check your connection.' } });
+    };
+    
+    // Progress handler - real progress from browser
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) {
+        const percent = Math.round((event.loaded / event.total) * 100);
+        console.log('[XHR Upload] Progress:', percent + '%', `(${formatFileSize(event.loaded)}/${formatFileSize(event.total)})`);
+        onProgress(percent);
       }
-    } catch (err: any) {
-      clearTimeout(timeoutId);
-      console.error('[Upload] Exception:', err);
-      resolve({ data: null, error: { message: err.message || 'Upload failed' } });
-    }
+    };
+    
+    // Completion handler
+    xhr.onload = () => {
+      console.log('[XHR Upload] Complete, status:', xhr.status);
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const response = JSON.parse(xhr.responseText);
+          console.log('[XHR Upload] Success:', response);
+          resolve({ data: response, error: null });
+        } catch {
+          // Some successful uploads don't return JSON
+          resolve({ data: { path }, error: null });
+        }
+      } else {
+        let errorMessage = 'Upload failed';
+        try {
+          const errorResponse = JSON.parse(xhr.responseText);
+          errorMessage = errorResponse.message || errorResponse.error || errorMessage;
+        } catch {
+          errorMessage = xhr.statusText || errorMessage;
+        }
+        console.error('[XHR Upload] Error:', xhr.status, errorMessage);
+        resolve({ data: null, error: { message: errorMessage, statusCode: xhr.status } });
+      }
+    };
+    
+    // Error handler
+    xhr.onerror = () => {
+      console.error('[XHR Upload] Network error');
+      resolve({ data: null, error: { message: 'Network error. Please check your connection and try again.' } });
+    };
+    
+    // Abort handler
+    xhr.onabort = () => {
+      console.log('[XHR Upload] Aborted');
+      resolve({ data: null, error: { message: 'Upload was cancelled' } });
+    };
+    
+    // Open and send
+    xhr.open('POST', uploadUrl, true);
+    xhr.setRequestHeader('Authorization', `Bearer ${accessToken}`);
+    xhr.setRequestHeader('Content-Type', file.type || 'image/jpeg');
+    xhr.setRequestHeader('x-upsert', 'true');
+    xhr.setRequestHeader('Cache-Control', 'max-age=3600');
+    
+    xhr.send(file);
   });
 };
 
@@ -370,9 +410,11 @@ export function UserDepositRequestDialog({
       console.log("[Device]", mobile ? 'Mobile' : 'Desktop');
       console.log("[File]", proofFile.name, formatFileSize(proofFile.size));
       
-      // Step 1: Quick session check with timeout (skip refresh on mobile for speed)
-      setUploadProgress(10);
-      setUploadStatus("Verifying...");
+      // Step 1: Get access token for upload
+      setUploadProgress(5);
+      setUploadStatus("Verifying login...");
+      
+      let accessToken: string | null = null;
       
       try {
         const sessionResult = await withTimeout(
@@ -381,48 +423,50 @@ export function UserDepositRequestDialog({
           "Session check timed out"
         );
         
-        if (sessionResult.error || !sessionResult.data.session) {
-          console.log("[Session] No valid session, trying refresh");
+        if (sessionResult.data.session?.access_token) {
+          accessToken = sessionResult.data.session.access_token;
+          console.log("[Session] Got access token");
+        } else {
+          console.log("[Session] No token, trying refresh");
           const refreshResult = await withTimeout(
             supabase.auth.refreshSession(),
             5000,
             "Session refresh timed out"
           );
-          if (refreshResult.error || !refreshResult.data.session) {
-            throw new Error("Please log out and log in again.");
+          if (refreshResult.data.session?.access_token) {
+            accessToken = refreshResult.data.session.access_token;
+            console.log("[Session] Got token after refresh");
           }
         }
-        console.log("[Session] OK");
       } catch (sessionErr: any) {
         console.error("[Session] Error:", sessionErr.message);
-        // On mobile, proceed anyway if we have userId - RLS will handle auth
-        if (!mobile) throw sessionErr;
-        console.log("[Session] Mobile: proceeding despite session check issue");
       }
-      setUploadProgress(20);
-      setUploadStatus(mobile ? "Uploading (may take a moment)..." : "Uploading image...");
       
-      // Step 2: Upload file with timeout
+      if (!accessToken) {
+        throw new Error("Please log out and log in again to continue.");
+      }
+      
+      setUploadProgress(10);
+      setUploadStatus("Uploading...");
+      
+      // Step 2: Upload file using XHR with real progress
       const ext = proofFile.name.split('.').pop()?.toLowerCase() || 'jpg';
       const fileName = `${userId}/${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
       console.log("[Step 2] Uploading to:", fileName);
       
-      // Simulate progress for better UX
-      const progressInterval = setInterval(() => {
-        setUploadProgress(prev => {
-          if (prev < 75) return prev + 5;
-          return prev;
-        });
-      }, 800);
-      
-      const { data: uploadData, error: uploadError } = await uploadFile(
+      const { data: uploadData, error: uploadError } = await uploadFileWithXHR(
         'payment-proofs',
         fileName,
         proofFile,
-        timeout // Pass timeout (30s mobile, 60s desktop)
+        accessToken,
+        (percent) => {
+          // Map 0-100% to 10-85% of our progress bar
+          const mappedProgress = 10 + Math.round(percent * 0.75);
+          setUploadProgress(mappedProgress);
+          setUploadStatus(`Uploading... ${percent}%`);
+        },
+        timeout
       );
-      
-      clearInterval(progressInterval);
       
       if (uploadError) {
         console.error("[Upload] Error:", uploadError);
