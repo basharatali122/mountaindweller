@@ -17,13 +17,14 @@ serve(async (req) => {
     // Get authorization header
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
+      console.error("Missing authorization header");
       return new Response(
-        JSON.stringify({ error: "Missing authorization header" }),
+        JSON.stringify({ success: false, error: "Missing authorization header" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Create Supabase client with user's token
+    // Create Supabase clients
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -38,39 +39,57 @@ serve(async (req) => {
     if (userError || !user) {
       console.error("Auth error:", userError);
       return new Response(
-        JSON.stringify({ error: "Unauthorized" }),
+        JSON.stringify({ success: false, error: "Unauthorized - please log in again" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
     console.log("User authenticated:", user.id);
 
-    // Get form data
-    const formData = await req.formData();
-    const file = formData.get("file") as File;
-    const amount = formData.get("amount") as string;
-    const bankReference = formData.get("bankReference") as string;
+    // Parse JSON body
+    const body = await req.json();
+    const { file, fileName, fileType, amount, bankReference } = body;
 
     if (!file || !amount) {
+      console.error("Missing file or amount");
       return new Response(
-        JSON.stringify({ error: "Missing file or amount" }),
+        JSON.stringify({ success: false, error: "Missing file or amount" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    console.log("File received:", file.name, file.size, "bytes");
-
-    // Validate file
-    if (!file.type.startsWith("image/")) {
+    // Validate file type
+    if (!fileType || !fileType.startsWith("image/")) {
+      console.error("Invalid file type:", fileType);
       return new Response(
-        JSON.stringify({ error: "Only images are allowed" }),
+        JSON.stringify({ success: false, error: "Only images are allowed" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    if (file.size > 10 * 1024 * 1024) {
+    // Decode base64 to binary
+    console.log("Decoding base64 file:", fileName);
+    let fileBytes: Uint8Array;
+    try {
+      const binaryString = atob(file);
+      fileBytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        fileBytes[i] = binaryString.charCodeAt(i);
+      }
+    } catch (decodeError) {
+      console.error("Base64 decode error:", decodeError);
       return new Response(
-        JSON.stringify({ error: "File too large. Maximum 10MB" }),
+        JSON.stringify({ success: false, error: "Invalid file data" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    console.log("File decoded, size:", fileBytes.length, "bytes");
+
+    // Check file size (max 10MB)
+    if (fileBytes.length > 10 * 1024 * 1024) {
+      return new Response(
+        JSON.stringify({ success: false, error: "File too large. Maximum 10MB" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -81,17 +100,16 @@ serve(async (req) => {
     // Generate unique file path
     const timestamp = Date.now();
     const randomStr = Math.random().toString(36).substring(2, 8);
-    const extension = file.name.split(".").pop() || "jpg";
+    const extension = fileName?.split(".").pop() || "jpg";
     const filePath = `${user.id}/${timestamp}_${randomStr}.${extension}`;
 
     console.log("Uploading to:", filePath);
 
     // Upload file using service role (bypasses RLS)
-    const fileBuffer = await file.arrayBuffer();
     const { data: uploadData, error: uploadError } = await adminClient.storage
       .from("payment-proofs")
-      .upload(filePath, fileBuffer, {
-        contentType: file.type,
+      .upload(filePath, fileBytes, {
+        contentType: fileType,
         cacheControl: "3600",
         upsert: true,
       });
@@ -99,22 +117,25 @@ serve(async (req) => {
     if (uploadError) {
       console.error("Upload error:", uploadError);
       return new Response(
-        JSON.stringify({ error: "Failed to upload file: " + uploadError.message }),
+        JSON.stringify({ success: false, error: "Failed to upload file: " + uploadError.message }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
     console.log("Upload successful:", uploadData);
 
-    // Create deposit request using service role
+    // Validate amount
     const depositAmount = parseInt(amount, 10);
     if (isNaN(depositAmount) || depositAmount < 1000) {
+      // Clean up uploaded file
+      await adminClient.storage.from("payment-proofs").remove([filePath]);
       return new Response(
-        JSON.stringify({ error: "Invalid amount. Minimum Rs. 1,000" }),
+        JSON.stringify({ success: false, error: "Invalid amount. Minimum Rs. 1,000" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
+    // Create deposit request using service role
     const { error: insertError } = await adminClient.from("deposit_requests").insert({
       user_id: user.id,
       amount: depositAmount,
@@ -124,10 +145,10 @@ serve(async (req) => {
 
     if (insertError) {
       console.error("Insert error:", insertError);
-      // Try to clean up uploaded file
+      // Clean up uploaded file
       await adminClient.storage.from("payment-proofs").remove([filePath]);
       return new Response(
-        JSON.stringify({ error: "Failed to save deposit request" }),
+        JSON.stringify({ success: false, error: "Failed to save deposit request" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -146,7 +167,7 @@ serve(async (req) => {
   } catch (error) {
     console.error("Unexpected error:", error);
     return new Response(
-      JSON.stringify({ error: "Internal server error" }),
+      JSON.stringify({ success: false, error: "Internal server error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

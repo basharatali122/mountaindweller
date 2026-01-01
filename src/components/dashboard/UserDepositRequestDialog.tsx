@@ -205,7 +205,7 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
     setErrorMessage("");
 
     try {
-      // Get session
+      // Check session first
       setUploadProgress(20);
       setUploadStatus("Authenticating...");
 
@@ -214,37 +214,39 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
         throw new Error("Please log in again");
       }
 
-      // Prepare form data
+      // Convert file to base64 for edge function
       setUploadProgress(40);
-      setUploadStatus("Preparing...");
+      setUploadStatus("Preparing image...");
 
-      const formData = new FormData();
-      formData.append("file", proofFile);
-      formData.append("amount", amount);
-      if (bankReference) {
-        formData.append("bankReference", bankReference);
-      }
+      const arrayBuffer = await proofFile.arrayBuffer();
+      const base64 = btoa(
+        new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
+      );
 
-      // Call edge function
+      // Call edge function using supabase client
       setUploadProgress(60);
       setUploadStatus("Uploading...");
 
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const response = await fetch(`${supabaseUrl}/functions/v1/upload-payment-proof`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
+      const { data, error } = await supabase.functions.invoke("upload-payment-proof", {
+        body: {
+          file: base64,
+          fileName: proofFile.name,
+          fileType: proofFile.type,
+          amount: amount,
+          bankReference: bankReference || null,
         },
-        body: formData,
       });
 
       setUploadProgress(85);
       setUploadStatus("Processing...");
 
-      const result = await response.json();
+      if (error) {
+        console.error("Edge function error:", error);
+        throw new Error(error.message || "Upload failed");
+      }
 
-      if (!response.ok) {
-        throw new Error(result.error || "Upload failed");
+      if (!data?.success) {
+        throw new Error(data?.error || "Upload failed");
       }
 
       setUploadProgress(100);
