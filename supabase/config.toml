@@ -8,3 +8,6 @@ verify_jwt = false
 
 [functions.upload-payment-proof]
 verify_jwt = false
+
+[functions.cloudinary-upload]
+verify_jwt = false
