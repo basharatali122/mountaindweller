@@ -81,9 +81,29 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
     if (galleryInputRef.current) galleryInputRef.current.value = "";
   };
 
+  // Convert file to base64 - works reliably on ALL mobile devices
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        resolve(result);
+      };
+      reader.onerror = () => reject(new Error("Failed to read file"));
+      reader.readAsDataURL(file);
+    });
+  };
+
   const uploadToCloudinary = async (file: File): Promise<string> => {
     const timestamp = Date.now();
     const fileName = `payment_${userId}_${timestamp}`;
+
+    console.log("[UPLOAD] Converting to base64...");
+    setUploadProgress("Processing image...");
+
+    // Convert file to base64 first (this works on ALL mobile browsers)
+    const base64Data = await fileToBase64(file);
+    console.log("[UPLOAD] Base64 ready, size:", Math.round(base64Data.length / 1024), "KB");
 
     console.log("[UPLOAD] Getting Cloudinary config...");
     setUploadProgress("Preparing upload...");
@@ -94,17 +114,20 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
     );
     
     if (!configResponse.ok) {
+      const errorText = await configResponse.text();
+      console.error("[UPLOAD] Config error:", errorText);
       throw new Error("Could not get upload config");
     }
     
     const { cloudName, uploadPreset } = await configResponse.json();
+    console.log("[UPLOAD] Config received:", cloudName);
     
-    console.log("[UPLOAD] Starting direct Cloudinary upload:", fileName);
+    console.log("[UPLOAD] Starting Cloudinary upload:", fileName);
     setUploadProgress("Uploading image...");
 
-    // Direct upload to Cloudinary (works great on mobile)
+    // Use base64 data URL for upload - most reliable for mobile
     const formData = new FormData();
-    formData.append("file", file);
+    formData.append("file", base64Data);
     formData.append("upload_preset", uploadPreset);
     formData.append("public_id", fileName);
     formData.append("folder", "payment-proofs");
