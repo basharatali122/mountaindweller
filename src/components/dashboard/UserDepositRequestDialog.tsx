@@ -85,35 +85,47 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
     const timestamp = Date.now();
     const fileName = `payment_${userId}_${timestamp}`;
 
-    console.log("[UPLOAD] Starting Cloudinary upload:", fileName);
+    console.log("[UPLOAD] Getting Cloudinary config...");
+    setUploadProgress("Preparing upload...");
+
+    // Get Cloudinary config from edge function
+    const configResponse = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-cloudinary-config`
+    );
+    
+    if (!configResponse.ok) {
+      throw new Error("Could not get upload config");
+    }
+    
+    const { cloudName, uploadPreset } = await configResponse.json();
+    
+    console.log("[UPLOAD] Starting direct Cloudinary upload:", fileName);
     setUploadProgress("Uploading image...");
 
-    // Use FormData for better mobile compatibility
+    // Direct upload to Cloudinary (works great on mobile)
     const formData = new FormData();
     formData.append("file", file);
-    formData.append("fileName", fileName);
-
-    const { data: { session } } = await supabase.auth.getSession();
+    formData.append("upload_preset", uploadPreset);
+    formData.append("public_id", fileName);
+    formData.append("folder", "payment-proofs");
 
     const response = await fetch(
-      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/cloudinary-upload`,
+      `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
       {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${session?.access_token}`,
-        },
         body: formData,
       }
     );
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: "Upload failed" }));
-      throw new Error(error.error || "Upload failed");
+      const errorText = await response.text();
+      console.error("[UPLOAD] Cloudinary error:", errorText);
+      throw new Error("Upload failed - please try again");
     }
 
     const result = await response.json();
-    console.log("[UPLOAD] Success:", result.url);
-    return result.url;
+    console.log("[UPLOAD] Success:", result.secure_url);
+    return result.secure_url;
   };
 
   const handleSubmit = async () => {

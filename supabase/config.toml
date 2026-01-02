@@ -11,3 +11,6 @@ verify_jwt = false
 
 [functions.cloudinary-upload]
 verify_jwt = false
+
+[functions.get-cloudinary-config]
+verify_jwt = false
