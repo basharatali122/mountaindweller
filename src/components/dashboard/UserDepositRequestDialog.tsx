@@ -77,9 +77,9 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  const uploadViaEdgeFunction = async (file: File, depositAmount: number, reference: string): Promise<void> => {
-    console.log("[UPLOAD] Starting Edge Function upload");
-    setUploadProgress("Preparing image...");
+  const uploadViaFormData = async (file: File, depositAmount: number, reference: string): Promise<void> => {
+    console.log("[UPLOAD] Starting FormData upload (most reliable for mobile)");
+    setUploadProgress("Preparing...");
 
     // Get session token
     const { data: { session } } = await supabase.auth.getSession();
@@ -87,44 +87,66 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
       throw new Error("Please log in again");
     }
 
-    // Convert file to base64
-    const base64 = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const result = reader.result as string;
-        // Remove data URL prefix (e.g., "data:image/jpeg;base64,")
-        const base64Data = result.split(",")[1];
-        resolve(base64Data);
-      };
-      reader.onerror = () => reject(new Error("Failed to read file"));
-      reader.readAsDataURL(file);
-    });
-
-    console.log("[UPLOAD] File converted to base64, length:", base64.length);
     setUploadProgress("Uploading...");
 
-    // Call Edge Function
-    const { data, error } = await supabase.functions.invoke("upload-payment-proof", {
-      body: {
-        file: base64,
-        fileName: file.name,
-        fileType: file.type,
-        amount: depositAmount,
-        bankReference: reference || null,
-      },
+    // Use FormData - no base64 conversion needed, works better on mobile
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("amount", depositAmount.toString());
+    formData.append("bankReference", reference || "");
+
+    // Get the Supabase URL from the client
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    
+    // Use XMLHttpRequest for better mobile compatibility
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          const percent = Math.round((e.loaded / e.total) * 100);
+          setUploadProgress(`Uploading ${percent}%`);
+          console.log("[UPLOAD] Progress:", percent + "%");
+        }
+      };
+
+      xhr.onload = () => {
+        console.log("[UPLOAD] XHR complete, status:", xhr.status);
+        try {
+          const response = JSON.parse(xhr.responseText);
+          console.log("[UPLOAD] Response:", response);
+          
+          if (xhr.status >= 200 && xhr.status < 300 && response.success) {
+            resolve();
+          } else {
+            reject(new Error(response.error || "Upload failed"));
+          }
+        } catch (e) {
+          console.error("[UPLOAD] Parse error:", e);
+          reject(new Error("Invalid response from server"));
+        }
+      };
+
+      xhr.onerror = () => {
+        console.error("[UPLOAD] XHR error");
+        reject(new Error("Network error - check your connection"));
+      };
+
+      xhr.ontimeout = () => {
+        console.error("[UPLOAD] XHR timeout");
+        reject(new Error("Upload timed out - try a smaller image"));
+      };
+
+      // 2 minute timeout
+      xhr.timeout = 120000;
+
+      xhr.open("POST", `${supabaseUrl}/functions/v1/upload-payment-proof`);
+      xhr.setRequestHeader("Authorization", `Bearer ${session.access_token}`);
+      // Don't set Content-Type - browser will set it correctly with boundary for FormData
+      
+      console.log("[UPLOAD] Sending FormData...");
+      xhr.send(formData);
     });
-
-    if (error) {
-      console.error("[UPLOAD] Edge Function error:", error);
-      throw new Error(error.message || "Upload failed");
-    }
-
-    if (!data?.success) {
-      console.error("[UPLOAD] Edge Function returned error:", data?.error);
-      throw new Error(data?.error || "Upload failed");
-    }
-
-    console.log("[UPLOAD] Success:", data);
   };
 
   const handleSubmit = async () => {
@@ -144,8 +166,8 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
     setUploadProgress("Starting upload...");
 
     try {
-      // Upload via Edge Function - handles everything server-side
-      await uploadViaEdgeFunction(selectedFile, depositAmount, bankReference);
+      // Upload via FormData - most reliable for mobile
+      await uploadViaFormData(selectedFile, depositAmount, bankReference);
 
       console.log("[SUBMIT] Success!");
       toast({
