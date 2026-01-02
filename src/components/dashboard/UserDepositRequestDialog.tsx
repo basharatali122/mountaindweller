@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Wallet, Copy, CheckCircle, X, Image as ImageIcon, Camera, FolderOpen } from "lucide-react";
+import { Loader2, Wallet, Copy, CheckCircle, X, Image as ImageIcon, Upload } from "lucide-react";
 
 interface UserDepositRequestDialogProps {
   userId: string;
@@ -38,8 +38,7 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
   const [isLoading, setIsLoading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState("");
   const [copiedField, setCopiedField] = useState<string | null>(null);
-  const cameraInputRef = useRef<HTMLInputElement>(null);
-  const galleryInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const copyToClipboard = (text: string, field: string) => {
     navigator.clipboard.writeText(text);
@@ -47,7 +46,7 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
     setTimeout(() => setCopiedField(null), 2000);
   };
 
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -58,15 +57,13 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
       return;
     }
 
-    // Check file size (max 10MB)
-    if (file.size > 10 * 1024 * 1024) {
-      toast({ title: "File too large", description: "Max 10MB allowed", variant: "destructive" });
+    // Check file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast({ title: "File too large", description: "Max 5MB allowed", variant: "destructive" });
       return;
     }
 
     setSelectedFile(file);
-
-    // Create preview using URL.createObjectURL (faster than FileReader)
     const objectUrl = URL.createObjectURL(file);
     setPreviewUrl(objectUrl);
   };
@@ -77,78 +74,38 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
     }
     setSelectedFile(null);
     setPreviewUrl(null);
-    if (cameraInputRef.current) cameraInputRef.current.value = "";
-    if (galleryInputRef.current) galleryInputRef.current.value = "";
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  // Convert file to base64 - works reliably on ALL mobile devices
-  const fileToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const result = reader.result as string;
-        resolve(result);
-      };
-      reader.onerror = () => reject(new Error("Failed to read file"));
-      reader.readAsDataURL(file);
-    });
-  };
-
-  const uploadToCloudinary = async (file: File): Promise<string> => {
+  const uploadToSupabase = async (file: File): Promise<string> => {
     const timestamp = Date.now();
-    const fileName = `payment_${userId}_${timestamp}`;
+    const fileExt = file.name.split('.').pop() || 'jpg';
+    const fileName = `${userId}/${timestamp}.${fileExt}`;
 
-    console.log("[UPLOAD] Converting to base64...");
-    setUploadProgress("Processing image...");
-
-    // Convert file to base64 first (this works on ALL mobile browsers)
-    const base64Data = await fileToBase64(file);
-    console.log("[UPLOAD] Base64 ready, size:", Math.round(base64Data.length / 1024), "KB");
-
-    console.log("[UPLOAD] Getting Cloudinary config...");
-    setUploadProgress("Preparing upload...");
-
-    // Get Cloudinary config from edge function
-    const configResponse = await fetch(
-      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-cloudinary-config`
-    );
-    
-    if (!configResponse.ok) {
-      const errorText = await configResponse.text();
-      console.error("[UPLOAD] Config error:", errorText);
-      throw new Error("Could not get upload config");
-    }
-    
-    const { cloudName, uploadPreset } = await configResponse.json();
-    console.log("[UPLOAD] Config received:", cloudName);
-    
-    console.log("[UPLOAD] Starting Cloudinary upload:", fileName);
+    console.log("[UPLOAD] Starting Supabase upload:", fileName);
     setUploadProgress("Uploading image...");
 
-    // Use base64 data URL for upload - most reliable for mobile
-    const formData = new FormData();
-    formData.append("file", base64Data);
-    formData.append("upload_preset", uploadPreset);
-    formData.append("public_id", fileName);
-    formData.append("folder", "payment-proofs");
+    const { data, error } = await supabase.storage
+      .from("payment-proofs")
+      .upload(fileName, file, {
+        cacheControl: "3600",
+        upsert: false,
+      });
 
-    const response = await fetch(
-      `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
-      {
-        method: "POST",
-        body: formData,
-      }
-    );
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("[UPLOAD] Cloudinary error:", errorText);
-      throw new Error("Upload failed - please try again");
+    if (error) {
+      console.error("[UPLOAD] Supabase error:", error);
+      throw new Error(error.message || "Upload failed");
     }
 
-    const result = await response.json();
-    console.log("[UPLOAD] Success:", result.secure_url);
-    return result.secure_url;
+    console.log("[UPLOAD] Upload successful:", data.path);
+
+    // Get public URL
+    const { data: urlData } = supabase.storage
+      .from("payment-proofs")
+      .getPublicUrl(data.path);
+
+    console.log("[UPLOAD] Public URL:", urlData.publicUrl);
+    return urlData.publicUrl;
   };
 
   const handleSubmit = async () => {
@@ -168,7 +125,7 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
     setUploadProgress("Starting upload...");
 
     try {
-      const imageUrl = await uploadToCloudinary(selectedFile);
+      const imageUrl = await uploadToSupabase(selectedFile);
 
       console.log("[SUBMIT] Saving to database...");
       setUploadProgress("Saving request...");
@@ -333,33 +290,22 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
             />
           </div>
 
-          {/* File Upload */}
+          {/* File Upload - Single Gallery Option */}
           <div className="space-y-2">
             <Label>Payment Screenshot</Label>
 
+            {/* Hidden file input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleFileSelect}
+              className="hidden"
+              disabled={isLoading}
+            />
+
             {!previewUrl ? (
               <div className="space-y-3">
-                {/* Camera Input (hidden) */}
-                <input
-                  ref={cameraInputRef}
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  onChange={handleFileSelect}
-                  className="hidden"
-                  disabled={isLoading}
-                />
-
-                {/* Gallery Input (hidden) */}
-                <input
-                  ref={galleryInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={handleFileSelect}
-                  className="hidden"
-                  disabled={isLoading}
-                />
-
                 {isLoading ? (
                   <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6 text-center">
                     <Loader2 className="w-8 h-8 mx-auto mb-2 animate-spin text-primary" />
@@ -367,32 +313,18 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
                     <p className="text-xs text-muted-foreground mt-1">Please wait...</p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-2 gap-3">
-                    {/* Take Photo Button */}
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="h-24 flex-col gap-2"
-                      onClick={() => cameraInputRef.current?.click()}
-                    >
-                      <Camera className="w-6 h-6" />
-                      <span className="text-xs">Take Photo</span>
-                    </Button>
-
-                    {/* Choose from Gallery Button */}
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="h-24 flex-col gap-2"
-                      onClick={() => galleryInputRef.current?.click()}
-                    >
-                      <FolderOpen className="w-6 h-6" />
-                      <span className="text-xs">Choose from Gallery</span>
-                    </Button>
-                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full h-24 flex-col gap-2 border-dashed border-2"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <Upload className="w-6 h-6" />
+                    <span className="text-sm">Choose Image from Gallery</span>
+                  </Button>
                 )}
 
-                <p className="text-xs text-center text-muted-foreground">JPG, PNG • Auto-compressed to 0.5MB</p>
+                <p className="text-xs text-center text-muted-foreground">JPG, PNG • Max 5MB</p>
               </div>
             ) : (
               <div className="relative">
