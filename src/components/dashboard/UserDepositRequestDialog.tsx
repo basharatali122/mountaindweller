@@ -346,7 +346,6 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
                   ref={fileInputRef}
                   type="file"
                   accept="image/*"
-                  capture="environment"
                   onChange={handleFileSelect}
                   className="hidden"
                   disabled={isLoading}
