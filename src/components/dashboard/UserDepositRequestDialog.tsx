@@ -1,5 +1,4 @@
 import { useState, useRef } from "react";
-import imageCompression from "browser-image-compression";
 import {
   Dialog,
   DialogContent,
@@ -14,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Wallet, Copy, CheckCircle, Upload, X, Image as ImageIcon, Camera, FolderOpen } from "lucide-react";
+import { Loader2, Wallet, Copy, CheckCircle, X, Image as ImageIcon, Camera, FolderOpen } from "lucide-react";
 
 interface UserDepositRequestDialogProps {
   userId: string;
@@ -48,136 +47,73 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
     setTimeout(() => setCopiedField(null), 2000);
   };
 
-  const compressImage = async (file: File): Promise<File> => {
-    const options = {
-      maxSizeMB: 0.5, // Reduced to 0.5MB for faster mobile processing
-      maxWidthOrHeight: 1280, // Reduced resolution
-      useWebWorker: false, // Disabled for mobile compatibility
-      fileType: "image/jpeg",
-      initialQuality: 0.7,
-    };
-
-    try {
-      console.log("[COMPRESS] Starting:", file.name, (file.size / 1024 / 1024).toFixed(2), "MB");
-      setUploadProgress("Compressing image...");
-
-      const compressedFile = await imageCompression(file, options);
-
-      console.log("[COMPRESS] Done:", (compressedFile.size / 1024 / 1024).toFixed(2), "MB");
-      return compressedFile;
-    } catch (error: any) {
-      console.error("[COMPRESS] Error:", error);
-      throw new Error("Compression failed: " + error.message);
-    }
-  };
-
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) {
-      console.log("[FILE] No file selected");
-      return;
-    }
+    if (!file) return;
 
     console.log("[FILE] Selected:", file.name, file.type, (file.size / 1024 / 1024).toFixed(2), "MB");
 
-    // Check if file is an image
     if (!file.type.startsWith("image/")) {
-      console.error("[FILE] Invalid type:", file.type);
       toast({ title: "Invalid file", description: "Please select an image", variant: "destructive" });
       return;
     }
 
-    setIsLoading(true);
-    setUploadProgress("Processing image...");
-
-    try {
-      // Always compress for mobile
-      console.log("[PROCESS] Compressing...");
-      const processedFile = await compressImage(file);
-
-      // Check compressed file size
-      if (processedFile.size > 5 * 1024 * 1024) {
-        console.error("[PROCESS] Still too large:", (processedFile.size / 1024 / 1024).toFixed(2), "MB");
-        toast({
-          title: "File too large",
-          description: "Please use a smaller image.",
-          variant: "destructive",
-        });
-        setIsLoading(false);
-        setUploadProgress("");
-        return;
-      }
-
-      console.log("[PROCESS] Creating preview...");
-      setUploadProgress("Creating preview...");
-      setSelectedFile(processedFile);
-
-      // Create preview
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        console.log("[READER] Preview ready");
-        setPreviewUrl(event.target?.result as string);
-        setIsLoading(false);
-        setUploadProgress("");
-      };
-      reader.onerror = (error) => {
-        console.error("[READER] Error:", error);
-        toast({ title: "Error", description: "Failed to read image", variant: "destructive" });
-        setIsLoading(false);
-        setUploadProgress("");
-      };
-      reader.readAsDataURL(processedFile);
-    } catch (error: any) {
-      console.error("[PROCESS] Error:", error);
-      toast({
-        title: "Processing failed",
-        description: error.message || "Failed to process image",
-        variant: "destructive",
-      });
-      setIsLoading(false);
-      setUploadProgress("");
+    // Check file size (max 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      toast({ title: "File too large", description: "Max 10MB allowed", variant: "destructive" });
+      return;
     }
+
+    setSelectedFile(file);
+
+    // Create preview using URL.createObjectURL (faster than FileReader)
+    const objectUrl = URL.createObjectURL(file);
+    setPreviewUrl(objectUrl);
   };
 
   const clearFile = () => {
-    console.log("[CLEAR] Clearing file");
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+    }
     setSelectedFile(null);
     setPreviewUrl(null);
-    if (cameraInputRef.current) {
-      cameraInputRef.current.value = "";
-    }
-    if (galleryInputRef.current) {
-      galleryInputRef.current.value = "";
-    }
+    if (cameraInputRef.current) cameraInputRef.current.value = "";
+    if (galleryInputRef.current) galleryInputRef.current.value = "";
   };
 
-  const uploadToSupabase = async (file: File): Promise<string> => {
+  const uploadToCloudinary = async (file: File): Promise<string> => {
     const timestamp = Date.now();
-    const fileName = `${userId}/${timestamp}.jpg`;
+    const fileName = `payment_${userId}_${timestamp}`;
 
-    console.log("[UPLOAD] Starting:", fileName, (file.size / 1024 / 1024).toFixed(2), "MB");
-    setUploadProgress("Uploading to server...");
+    console.log("[UPLOAD] Starting Cloudinary upload:", fileName);
+    setUploadProgress("Uploading image...");
 
-    try {
-      const { data, error } = await supabase.storage.from("payment-proofs").upload(fileName, file, {
-        cacheControl: "3600",
-        upsert: false,
-        contentType: "image/jpeg",
-      });
+    // Use FormData for better mobile compatibility
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("fileName", fileName);
 
-      if (error) {
-        console.error("[UPLOAD] Supabase error:", error);
-        throw new Error("Upload failed: " + error.message);
+    const { data: { session } } = await supabase.auth.getSession();
+
+    const response = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/cloudinary-upload`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session?.access_token}`,
+        },
+        body: formData,
       }
+    );
 
-      const { data: urlData } = supabase.storage.from("payment-proofs").getPublicUrl(data.path);
-
-      console.log("[UPLOAD] Success:", urlData.publicUrl);
-      return urlData.publicUrl;
-    } catch (error: any) {
-      console.error("[UPLOAD] Error:", error);
-      throw error;
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: "Upload failed" }));
+      throw new Error(error.error || "Upload failed");
     }
+
+    const result = await response.json();
+    console.log("[UPLOAD] Success:", result.url);
+    return result.url;
   };
 
   const handleSubmit = async () => {
@@ -197,7 +133,7 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
     setUploadProgress("Starting upload...");
 
     try {
-      const imageUrl = await uploadToSupabase(selectedFile);
+      const imageUrl = await uploadToCloudinary(selectedFile);
 
       console.log("[SUBMIT] Saving to database...");
       setUploadProgress("Saving request...");
