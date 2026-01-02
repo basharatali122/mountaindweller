@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useRef } from "react";
 import {
   Dialog,
   DialogContent,
@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Wallet, Copy, CheckCircle, Link, ExternalLink } from "lucide-react";
+import { Loader2, Wallet, Copy, CheckCircle, Upload, X, Image } from "lucide-react";
 
 interface UserDepositRequestDialogProps {
   userId: string;
@@ -33,9 +33,12 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState("");
   const [bankReference, setBankReference] = useState("");
-  const [imageLink, setImageLink] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState("");
   const [copiedField, setCopiedField] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const copyToClipboard = (text: string, field: string) => {
     navigator.clipboard.writeText(text);
@@ -43,24 +46,71 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
     setTimeout(() => setCopiedField(null), 2000);
   };
 
-  const isValidUrl = (url: string) => {
-    if (!url) return false;
-    try {
-      new URL(url);
-      return true;
-    } catch {
-      return false;
-    }
-  };
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-  const handleSubmit = async () => {
-    if (!amount || !imageLink) {
-      toast({ title: "Missing info", description: "Enter amount and image link", variant: "destructive" });
+    // Check file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast({ title: "File too large", description: "Maximum 5MB allowed", variant: "destructive" });
       return;
     }
 
-    if (!isValidUrl(imageLink)) {
-      toast({ title: "Invalid link", description: "Please enter a valid image URL", variant: "destructive" });
+    // Check file type
+    if (!file.type.startsWith("image/")) {
+      toast({ title: "Invalid file", description: "Please select an image", variant: "destructive" });
+      return;
+    }
+
+    setSelectedFile(file);
+    
+    // Create preview
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setPreviewUrl(event.target?.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const clearFile = () => {
+    setSelectedFile(null);
+    setPreviewUrl(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  const uploadToSupabase = async (file: File): Promise<string> => {
+    const timestamp = Date.now();
+    const fileExt = file.name.split('.').pop() || 'jpg';
+    const fileName = `${userId}/${timestamp}.${fileExt}`;
+
+    setUploadProgress("Uploading...");
+
+    // Upload to Supabase Storage
+    const { data, error } = await supabase.storage
+      .from("payment-proofs")
+      .upload(fileName, file, {
+        cacheControl: "3600",
+        upsert: false,
+      });
+
+    if (error) {
+      console.error("Supabase upload error:", error);
+      throw new Error("Upload failed: " + error.message);
+    }
+
+    // Get public URL
+    const { data: urlData } = supabase.storage
+      .from("payment-proofs")
+      .getPublicUrl(data.path);
+
+    return urlData.publicUrl;
+  };
+
+  const handleSubmit = async () => {
+    if (!amount || !selectedFile) {
+      toast({ title: "Missing info", description: "Enter amount and upload screenshot", variant: "destructive" });
       return;
     }
 
@@ -71,13 +121,20 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
     }
 
     setIsLoading(true);
+    setUploadProgress("Starting upload...");
 
     try {
+      // Upload file to Supabase Storage
+      const imageUrl = await uploadToSupabase(selectedFile);
+      
+      setUploadProgress("Saving request...");
+
+      // Save deposit request
       const { error: insertError } = await supabase.from("deposit_requests").insert({
         user_id: userId,
         amount: depositAmount,
         bank_reference: bankReference || null,
-        payment_proof_url: imageLink.trim(),
+        payment_proof_url: imageUrl,
       });
 
       if (insertError) {
@@ -89,21 +146,23 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
         description: "Deposit request submitted for review",
       });
 
+      // Reset form
       setAmount("");
       setBankReference("");
-      setImageLink("");
+      clearFile();
       setOpen(false);
       onSuccess?.();
 
     } catch (error: any) {
       console.error("Submit error:", error);
       toast({
-        title: "Failed",
+        title: "Upload Failed",
         description: error.message || "Please try again",
         variant: "destructive",
       });
     } finally {
       setIsLoading(false);
+      setUploadProgress("");
     }
   };
 
@@ -118,7 +177,7 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
       <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Deposit Funds</DialogTitle>
-          <DialogDescription>Transfer to our bank and share payment screenshot link</DialogDescription>
+          <DialogDescription>Transfer to our bank and upload payment screenshot</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6 py-4">
@@ -195,37 +254,53 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
             />
           </div>
 
-          {/* Image Link Input */}
+          {/* File Upload */}
           <div className="space-y-2">
-            <Label htmlFor="imageLink">Payment Screenshot Link</Label>
-            <div className="space-y-2">
-              <div className="relative">
-                <Link className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  id="imageLink"
-                  type="url"
-                  placeholder="Paste image link here..."
-                  value={imageLink}
-                  onChange={(e) => setImageLink(e.target.value)}
+            <Label>Payment Screenshot</Label>
+            
+            {!previewUrl ? (
+              <div 
+                className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6 text-center cursor-pointer hover:border-primary/50 transition-colors"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileSelect}
+                  className="hidden"
                   disabled={isLoading}
-                  className="pl-10"
                 />
+                <Upload className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">
+                  Tap to upload screenshot
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Max 5MB • JPG, PNG, HEIC
+                </p>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Upload your screenshot to Google Drive, WhatsApp, or any image hosting site and paste the link here
-              </p>
-              {imageLink && isValidUrl(imageLink) && (
-                <a 
-                  href={imageLink} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+            ) : (
+              <div className="relative">
+                <img 
+                  src={previewUrl} 
+                  alt="Payment proof preview" 
+                  className="w-full h-48 object-contain rounded-lg border bg-muted"
+                />
+                <Button
+                  size="icon"
+                  variant="destructive"
+                  className="absolute top-2 right-2 h-8 w-8"
+                  onClick={clearFile}
+                  disabled={isLoading}
                 >
-                  <ExternalLink className="w-3 h-3" />
-                  Preview link
-                </a>
-              )}
-            </div>
+                  <X className="h-4 w-4" />
+                </Button>
+                <div className="flex items-center gap-2 mt-2 text-sm text-muted-foreground">
+                  <Image className="w-4 h-4" />
+                  <span className="truncate">{selectedFile?.name}</span>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -233,11 +308,11 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
           <Button variant="outline" onClick={() => setOpen(false)} disabled={isLoading}>
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={isLoading || !imageLink || !amount}>
+          <Button onClick={handleSubmit} disabled={isLoading || !selectedFile || !amount}>
             {isLoading ? (
               <>
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Submitting...
+                {uploadProgress || "Processing..."}
               </>
             ) : (
               "Submit Request"
