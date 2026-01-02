@@ -40,6 +40,7 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
   const [uploadProgress, setUploadProgress] = useState("");
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const copyToClipboard = (text: string, field: string) => {
     navigator.clipboard.writeText(text);
@@ -47,33 +48,50 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
     setTimeout(() => setCopiedField(null), 2000);
   };
 
+  const resetLoadingState = () => {
+    setIsLoading(false);
+    setUploadProgress("");
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+  };
+
   const compressImage = async (file: File): Promise<File> => {
     const options = {
-      maxSizeMB: 1, // Maximum file size in MB
-      maxWidthOrHeight: 1920, // Maximum width or height
-      useWebWorker: true, // Use web worker for better performance
-      fileType: "image/jpeg", // Convert all images to JPEG (handles HEIC)
-      initialQuality: 0.8, // Initial quality
+      maxSizeMB: 0.8, // Reduced to 0.8MB for better mobile performance
+      maxWidthOrHeight: 1600, // Reduced resolution
+      useWebWorker: false, // Disable web worker for better mobile compatibility
+      fileType: "image/jpeg",
+      initialQuality: 0.75,
     };
 
     try {
-      setUploadProgress("Compressing image...");
+      console.log("[COMPRESS] Starting compression...");
+      console.log("[COMPRESS] Original:", file.name, (file.size / 1024 / 1024).toFixed(2), "MB", file.type);
+
       const compressedFile = await imageCompression(file, options);
-      console.log("Original file size:", (file.size / 1024 / 1024).toFixed(2), "MB");
-      console.log("Compressed file size:", (compressedFile.size / 1024 / 1024).toFixed(2), "MB");
+
+      console.log("[COMPRESS] Compressed:", (compressedFile.size / 1024 / 1024).toFixed(2), "MB");
       return compressedFile;
-    } catch (error) {
-      console.error("Compression error:", error);
-      throw new Error("Failed to compress image");
+    } catch (error: any) {
+      console.error("[COMPRESS] Error:", error);
+      throw new Error("Compression failed: " + (error.message || "Unknown error"));
     }
   };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file) {
+      console.log("[FILE] No file selected");
+      return;
+    }
+
+    console.log("[FILE] Selected:", file.name, file.type, (file.size / 1024 / 1024).toFixed(2), "MB");
 
     // Check if file is an image
     if (!file.type.startsWith("image/")) {
+      console.error("[FILE] Invalid type:", file.type);
       toast({ title: "Invalid file", description: "Please select an image", variant: "destructive" });
       return;
     }
@@ -81,54 +99,76 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
     setIsLoading(true);
     setUploadProgress("Processing image...");
 
-    try {
-      // Compress image if it's larger than 1MB or if it's HEIC/HEIF
-      let processedFile = file;
-      if (file.size > 1 * 1024 * 1024 || file.type === "image/heic" || file.type === "image/heif") {
-        processedFile = await compressImage(file);
-      }
+    // Set timeout to prevent infinite loading (30 seconds)
+    timeoutRef.current = setTimeout(() => {
+      console.error("[TIMEOUT] File processing timeout");
+      toast({
+        title: "Processing timeout",
+        description: "Image processing took too long. Please try a smaller image.",
+        variant: "destructive",
+      });
+      resetLoadingState();
+    }, 30000);
 
-      // Check compressed file size (should be under 5MB after compression)
+    try {
+      // Always compress images for mobile
+      console.log("[PROCESS] Starting compression...");
+      setUploadProgress("Compressing image...");
+      const processedFile = await compressImage(file);
+
+      // Check compressed file size
       if (processedFile.size > 5 * 1024 * 1024) {
-        toast({ 
-          title: "File too large", 
-          description: "Image is still too large after compression. Please use a smaller image.", 
-          variant: "destructive" 
+        console.error("[PROCESS] File still too large:", (processedFile.size / 1024 / 1024).toFixed(2), "MB");
+        toast({
+          title: "File too large",
+          description: "Please use a smaller image.",
+          variant: "destructive",
         });
-        setIsLoading(false);
-        setUploadProgress("");
+        resetLoadingState();
         return;
       }
 
+      console.log("[PROCESS] Creating preview...");
+      setUploadProgress("Creating preview...");
       setSelectedFile(processedFile);
-      
-      // Create preview
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        setPreviewUrl(event.target?.result as string);
-        setIsLoading(false);
-        setUploadProgress("");
-      };
-      reader.onerror = () => {
-        toast({ title: "Error", description: "Failed to read image", variant: "destructive" });
-        setIsLoading(false);
-        setUploadProgress("");
-      };
-      reader.readAsDataURL(processedFile);
 
+      // Create preview with timeout
+      const reader = new FileReader();
+      const readerTimeout = setTimeout(() => {
+        console.error("[READER] Preview timeout");
+        reader.abort();
+        toast({ title: "Error", description: "Failed to create preview", variant: "destructive" });
+        resetLoadingState();
+      }, 10000);
+
+      reader.onload = (event) => {
+        clearTimeout(readerTimeout);
+        console.log("[READER] Preview created successfully");
+        setPreviewUrl(event.target?.result as string);
+        resetLoadingState();
+      };
+
+      reader.onerror = (error) => {
+        clearTimeout(readerTimeout);
+        console.error("[READER] Error:", error);
+        toast({ title: "Error", description: "Failed to read image", variant: "destructive" });
+        resetLoadingState();
+      };
+
+      reader.readAsDataURL(processedFile);
     } catch (error: any) {
-      console.error("File processing error:", error);
-      toast({ 
-        title: "Processing failed", 
-        description: error.message || "Failed to process image", 
-        variant: "destructive" 
+      console.error("[PROCESS] Error:", error);
+      toast({
+        title: "Processing failed",
+        description: error.message || "Failed to process image",
+        variant: "destructive",
       });
-      setIsLoading(false);
-      setUploadProgress("");
+      resetLoadingState();
     }
   };
 
   const clearFile = () => {
+    console.log("[CLEAR] Clearing file");
     setSelectedFile(null);
     setPreviewUrl(null);
     if (fileInputRef.current) {
@@ -138,25 +178,30 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
 
   const uploadToSupabase = async (file: File): Promise<string> => {
     const timestamp = Date.now();
-    const fileExt = file.name.split('.').pop() || 'jpg';
-    const fileName = `${userId}/${timestamp}.${fileExt}`;
+    const fileName = `${userId}/${timestamp}.jpg`; // Always use .jpg extension
 
+    console.log("[UPLOAD] Starting upload:", fileName, (file.size / 1024 / 1024).toFixed(2), "MB");
     setUploadProgress("Uploading to server...");
 
     try {
-      // Upload to Supabase Storage with proper configuration
-      const { data, error } = await supabase.storage
-        .from("payment-proofs")
-        .upload(fileName, file, {
-          cacheControl: "3600",
-          upsert: false,
-          contentType: file.type || "image/jpeg",
-        });
+      // Upload with timeout
+      const uploadPromise = supabase.storage.from("payment-proofs").upload(fileName, file, {
+        cacheControl: "3600",
+        upsert: false,
+        contentType: "image/jpeg",
+      });
+
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error("Upload timeout after 60 seconds")), 60000);
+      });
+
+      const { data, error } = (await Promise.race([uploadPromise, timeoutPromise])) as any;
 
       if (error) {
-        console.error("Supabase upload error:", {
+        console.error("[UPLOAD] Supabase error:", {
           message: error.message,
-          error: error,
+          status: error.status,
+          statusCode: error.statusCode,
           fileName: fileName,
           fileSize: file.size,
           fileType: file.type,
@@ -165,22 +210,15 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
       }
 
       // Get public URL
-      const { data: urlData } = supabase.storage
-        .from("payment-proofs")
-        .getPublicUrl(data.path);
+      const { data: urlData } = supabase.storage.from("payment-proofs").getPublicUrl(data.path);
 
-      console.log("Upload successful:", urlData.publicUrl);
+      console.log("[UPLOAD] Success:", urlData.publicUrl);
       return urlData.publicUrl;
-
     } catch (error: any) {
-      console.error("Upload error details:", {
+      console.error("[UPLOAD] Error:", {
         message: error.message,
-        error: error,
-        file: {
-          name: file.name,
-          size: file.size,
-          type: file.type,
-        },
+        name: error.name,
+        stack: error.stack,
       });
       throw error;
     }
@@ -198,13 +236,26 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
       return;
     }
 
+    console.log("[SUBMIT] Starting submission...");
     setIsLoading(true);
     setUploadProgress("Starting upload...");
+
+    // Set timeout for entire submission (90 seconds)
+    timeoutRef.current = setTimeout(() => {
+      console.error("[SUBMIT] Submission timeout");
+      toast({
+        title: "Upload timeout",
+        description: "Upload took too long. Please check your connection and try again.",
+        variant: "destructive",
+      });
+      resetLoadingState();
+    }, 90000);
 
     try {
       // Upload file to Supabase Storage
       const imageUrl = await uploadToSupabase(selectedFile);
-      
+
+      console.log("[SUBMIT] Saving to database...");
       setUploadProgress("Saving request...");
 
       // Save deposit request
@@ -216,10 +267,11 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
       });
 
       if (insertError) {
-        console.error("Database insert error:", insertError);
+        console.error("[SUBMIT] Database error:", insertError);
         throw new Error("Failed to save: " + insertError.message);
       }
 
+      console.log("[SUBMIT] Success!");
       toast({
         title: "Success!",
         description: "Deposit request submitted for review",
@@ -231,17 +283,15 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
       clearFile();
       setOpen(false);
       onSuccess?.();
-
     } catch (error: any) {
-      console.error("Submit error:", error);
+      console.error("[SUBMIT] Error:", error);
       toast({
         title: "Upload Failed",
         description: error.message || "Please try again",
         variant: "destructive",
       });
     } finally {
-      setIsLoading(false);
-      setUploadProgress("");
+      resetLoadingState();
     }
   };
 
@@ -272,8 +322,17 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
                 <span className="text-muted-foreground">Account Title:</span>
                 <div className="flex items-center gap-2">
                   <span className="font-medium">{BANK_DETAILS.merchantName}</span>
-                  <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => copyToClipboard(BANK_DETAILS.merchantName, "name")}>
-                    {copiedField === "name" ? <CheckCircle className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-6 w-6"
+                    onClick={() => copyToClipboard(BANK_DETAILS.merchantName, "name")}
+                  >
+                    {copiedField === "name" ? (
+                      <CheckCircle className="h-3 w-3 text-green-500" />
+                    ) : (
+                      <Copy className="h-3 w-3" />
+                    )}
                   </Button>
                 </div>
               </div>
@@ -281,8 +340,17 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
                 <span className="text-muted-foreground">Account #:</span>
                 <div className="flex items-center gap-2">
                   <span className="font-mono font-medium">{BANK_DETAILS.accountNumber}</span>
-                  <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => copyToClipboard(BANK_DETAILS.accountNumber, "account")}>
-                    {copiedField === "account" ? <CheckCircle className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-6 w-6"
+                    onClick={() => copyToClipboard(BANK_DETAILS.accountNumber, "account")}
+                  >
+                    {copiedField === "account" ? (
+                      <CheckCircle className="h-3 w-3 text-green-500" />
+                    ) : (
+                      <Copy className="h-3 w-3" />
+                    )}
                   </Button>
                 </div>
               </div>
@@ -290,8 +358,17 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
                 <span className="text-muted-foreground">IBAN:</span>
                 <div className="flex items-center gap-2">
                   <span className="font-mono font-medium text-xs">{BANK_DETAILS.iban}</span>
-                  <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => copyToClipboard(BANK_DETAILS.iban, "iban")}>
-                    {copiedField === "iban" ? <CheckCircle className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-6 w-6"
+                    onClick={() => copyToClipboard(BANK_DETAILS.iban, "iban")}
+                  >
+                    {copiedField === "iban" ? (
+                      <CheckCircle className="h-3 w-3 text-green-500" />
+                    ) : (
+                      <Copy className="h-3 w-3" />
+                    )}
                   </Button>
                 </div>
               </div>
@@ -299,8 +376,17 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
                 <span className="text-muted-foreground">Till #:</span>
                 <div className="flex items-center gap-2">
                   <span className="font-mono font-medium">{BANK_DETAILS.tillNumber}</span>
-                  <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => copyToClipboard(BANK_DETAILS.tillNumber, "till")}>
-                    {copiedField === "till" ? <CheckCircle className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-6 w-6"
+                    onClick={() => copyToClipboard(BANK_DETAILS.tillNumber, "till")}
+                  >
+                    {copiedField === "till" ? (
+                      <CheckCircle className="h-3 w-3 text-green-500" />
+                    ) : (
+                      <Copy className="h-3 w-3" />
+                    )}
                   </Button>
                 </div>
               </div>
@@ -336,42 +422,40 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
           {/* File Upload */}
           <div className="space-y-2">
             <Label>Payment Screenshot</Label>
-            
+
             {!previewUrl ? (
-              <div 
+              <div
                 className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6 text-center cursor-pointer hover:border-primary/50 transition-colors"
                 onClick={() => !isLoading && fileInputRef.current?.click()}
               >
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept="image/*"
+                  accept="image/jpeg,image/jpg,image/png,image/webp"
+                  capture="environment"
                   onChange={handleFileSelect}
                   className="hidden"
                   disabled={isLoading}
                 />
-                {isLoading && uploadProgress.includes("Compressing") ? (
+                {isLoading ? (
                   <>
                     <Loader2 className="w-8 h-8 mx-auto mb-2 animate-spin text-primary" />
                     <p className="text-sm text-muted-foreground">{uploadProgress}</p>
+                    <p className="text-xs text-muted-foreground mt-1">Please wait...</p>
                   </>
                 ) : (
                   <>
                     <Upload className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground">
-                      Tap to upload screenshot
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      All formats supported • Auto-compressed
-                    </p>
+                    <p className="text-sm text-muted-foreground">Tap to upload screenshot</p>
+                    <p className="text-xs text-muted-foreground mt-1">JPG, PNG, WebP • Auto-compressed</p>
                   </>
                 )}
               </div>
             ) : (
               <div className="relative">
-                <img 
-                  src={previewUrl} 
-                  alt="Payment proof preview" 
+                <img
+                  src={previewUrl}
+                  alt="Payment proof preview"
                   className="w-full h-48 object-contain rounded-lg border bg-muted"
                 />
                 <Button
@@ -386,7 +470,7 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
                 <div className="flex items-center gap-2 mt-2 text-sm text-muted-foreground">
                   <Image className="w-4 h-4" />
                   <span className="truncate">{selectedFile?.name}</span>
-                  <span className="text-xs">({(selectedFile?.size || 0 / 1024 / 1024).toFixed(2)} MB)</span>
+                  <span className="text-xs">({((selectedFile?.size || 0) / 1024 / 1024).toFixed(2)} MB)</span>
                 </div>
               </div>
             )}
