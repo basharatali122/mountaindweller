@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Wallet, Copy, CheckCircle, Upload, X, Image } from "lucide-react";
+import { Loader2, Wallet, Copy, CheckCircle, Upload, X, Image as ImageIcon, Camera, FolderOpen } from "lucide-react";
 
 interface UserDepositRequestDialogProps {
   userId: string;
@@ -39,8 +39,8 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
   const [isLoading, setIsLoading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState("");
   const [copiedField, setCopiedField] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
 
   const copyToClipboard = (text: string, field: string) => {
     navigator.clipboard.writeText(text);
@@ -48,35 +48,26 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
     setTimeout(() => setCopiedField(null), 2000);
   };
 
-  const resetLoadingState = () => {
-    setIsLoading(false);
-    setUploadProgress("");
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-      timeoutRef.current = null;
-    }
-  };
-
   const compressImage = async (file: File): Promise<File> => {
     const options = {
-      maxSizeMB: 0.8, // Reduced to 0.8MB for better mobile performance
-      maxWidthOrHeight: 1600, // Reduced resolution
-      useWebWorker: false, // Disable web worker for better mobile compatibility
+      maxSizeMB: 0.5, // Reduced to 0.5MB for faster mobile processing
+      maxWidthOrHeight: 1280, // Reduced resolution
+      useWebWorker: false, // Disabled for mobile compatibility
       fileType: "image/jpeg",
-      initialQuality: 0.75,
+      initialQuality: 0.7,
     };
 
     try {
-      console.log("[COMPRESS] Starting compression...");
-      console.log("[COMPRESS] Original:", file.name, (file.size / 1024 / 1024).toFixed(2), "MB", file.type);
+      console.log("[COMPRESS] Starting:", file.name, (file.size / 1024 / 1024).toFixed(2), "MB");
+      setUploadProgress("Compressing image...");
 
       const compressedFile = await imageCompression(file, options);
 
-      console.log("[COMPRESS] Compressed:", (compressedFile.size / 1024 / 1024).toFixed(2), "MB");
+      console.log("[COMPRESS] Done:", (compressedFile.size / 1024 / 1024).toFixed(2), "MB");
       return compressedFile;
     } catch (error: any) {
       console.error("[COMPRESS] Error:", error);
-      throw new Error("Compression failed: " + (error.message || "Unknown error"));
+      throw new Error("Compression failed: " + error.message);
     }
   };
 
@@ -99,32 +90,21 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
     setIsLoading(true);
     setUploadProgress("Processing image...");
 
-    // Set timeout to prevent infinite loading (30 seconds)
-    timeoutRef.current = setTimeout(() => {
-      console.error("[TIMEOUT] File processing timeout");
-      toast({
-        title: "Processing timeout",
-        description: "Image processing took too long. Please try a smaller image.",
-        variant: "destructive",
-      });
-      resetLoadingState();
-    }, 30000);
-
     try {
-      // Always compress images for mobile
-      console.log("[PROCESS] Starting compression...");
-      setUploadProgress("Compressing image...");
+      // Always compress for mobile
+      console.log("[PROCESS] Compressing...");
       const processedFile = await compressImage(file);
 
       // Check compressed file size
       if (processedFile.size > 5 * 1024 * 1024) {
-        console.error("[PROCESS] File still too large:", (processedFile.size / 1024 / 1024).toFixed(2), "MB");
+        console.error("[PROCESS] Still too large:", (processedFile.size / 1024 / 1024).toFixed(2), "MB");
         toast({
           title: "File too large",
           description: "Please use a smaller image.",
           variant: "destructive",
         });
-        resetLoadingState();
+        setIsLoading(false);
+        setUploadProgress("");
         return;
       }
 
@@ -132,29 +112,20 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
       setUploadProgress("Creating preview...");
       setSelectedFile(processedFile);
 
-      // Create preview with timeout
+      // Create preview
       const reader = new FileReader();
-      const readerTimeout = setTimeout(() => {
-        console.error("[READER] Preview timeout");
-        reader.abort();
-        toast({ title: "Error", description: "Failed to create preview", variant: "destructive" });
-        resetLoadingState();
-      }, 10000);
-
       reader.onload = (event) => {
-        clearTimeout(readerTimeout);
-        console.log("[READER] Preview created successfully");
+        console.log("[READER] Preview ready");
         setPreviewUrl(event.target?.result as string);
-        resetLoadingState();
+        setIsLoading(false);
+        setUploadProgress("");
       };
-
       reader.onerror = (error) => {
-        clearTimeout(readerTimeout);
         console.error("[READER] Error:", error);
         toast({ title: "Error", description: "Failed to read image", variant: "destructive" });
-        resetLoadingState();
+        setIsLoading(false);
+        setUploadProgress("");
       };
-
       reader.readAsDataURL(processedFile);
     } catch (error: any) {
       console.error("[PROCESS] Error:", error);
@@ -163,7 +134,8 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
         description: error.message || "Failed to process image",
         variant: "destructive",
       });
-      resetLoadingState();
+      setIsLoading(false);
+      setUploadProgress("");
     }
   };
 
@@ -171,55 +143,39 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
     console.log("[CLEAR] Clearing file");
     setSelectedFile(null);
     setPreviewUrl(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
+    if (cameraInputRef.current) {
+      cameraInputRef.current.value = "";
+    }
+    if (galleryInputRef.current) {
+      galleryInputRef.current.value = "";
     }
   };
 
   const uploadToSupabase = async (file: File): Promise<string> => {
     const timestamp = Date.now();
-    const fileName = `${userId}/${timestamp}.jpg`; // Always use .jpg extension
+    const fileName = `${userId}/${timestamp}.jpg`;
 
-    console.log("[UPLOAD] Starting upload:", fileName, (file.size / 1024 / 1024).toFixed(2), "MB");
+    console.log("[UPLOAD] Starting:", fileName, (file.size / 1024 / 1024).toFixed(2), "MB");
     setUploadProgress("Uploading to server...");
 
     try {
-      // Upload with timeout
-      const uploadPromise = supabase.storage.from("payment-proofs").upload(fileName, file, {
+      const { data, error } = await supabase.storage.from("payment-proofs").upload(fileName, file, {
         cacheControl: "3600",
         upsert: false,
         contentType: "image/jpeg",
       });
 
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error("Upload timeout after 60 seconds")), 60000);
-      });
-
-      const { data, error } = (await Promise.race([uploadPromise, timeoutPromise])) as any;
-
       if (error) {
-        console.error("[UPLOAD] Supabase error:", {
-          message: error.message,
-          status: error.status,
-          statusCode: error.statusCode,
-          fileName: fileName,
-          fileSize: file.size,
-          fileType: file.type,
-        });
+        console.error("[UPLOAD] Supabase error:", error);
         throw new Error("Upload failed: " + error.message);
       }
 
-      // Get public URL
       const { data: urlData } = supabase.storage.from("payment-proofs").getPublicUrl(data.path);
 
       console.log("[UPLOAD] Success:", urlData.publicUrl);
       return urlData.publicUrl;
     } catch (error: any) {
-      console.error("[UPLOAD] Error:", {
-        message: error.message,
-        name: error.name,
-        stack: error.stack,
-      });
+      console.error("[UPLOAD] Error:", error);
       throw error;
     }
   };
@@ -236,29 +192,16 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
       return;
     }
 
-    console.log("[SUBMIT] Starting submission...");
+    console.log("[SUBMIT] Starting...");
     setIsLoading(true);
     setUploadProgress("Starting upload...");
 
-    // Set timeout for entire submission (90 seconds)
-    timeoutRef.current = setTimeout(() => {
-      console.error("[SUBMIT] Submission timeout");
-      toast({
-        title: "Upload timeout",
-        description: "Upload took too long. Please check your connection and try again.",
-        variant: "destructive",
-      });
-      resetLoadingState();
-    }, 90000);
-
     try {
-      // Upload file to Supabase Storage
       const imageUrl = await uploadToSupabase(selectedFile);
 
       console.log("[SUBMIT] Saving to database...");
       setUploadProgress("Saving request...");
 
-      // Save deposit request
       const { error: insertError } = await supabase.from("deposit_requests").insert({
         user_id: userId,
         amount: depositAmount,
@@ -277,7 +220,6 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
         description: "Deposit request submitted for review",
       });
 
-      // Reset form
       setAmount("");
       setBankReference("");
       clearFile();
@@ -291,7 +233,8 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
         variant: "destructive",
       });
     } finally {
-      resetLoadingState();
+      setIsLoading(false);
+      setUploadProgress("");
     }
   };
 
@@ -424,32 +367,61 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
             <Label>Payment Screenshot</Label>
 
             {!previewUrl ? (
-              <div
-                className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6 text-center cursor-pointer hover:border-primary/50 transition-colors"
-                onClick={() => !isLoading && fileInputRef.current?.click()}
-              >
+              <div className="space-y-3">
+                {/* Camera Input (hidden) */}
                 <input
-                  ref={fileInputRef}
+                  ref={cameraInputRef}
                   type="file"
-                  accept="image/jpeg,image/jpg,image/png,image/webp"
+                  accept="image/*"
                   capture="environment"
                   onChange={handleFileSelect}
                   className="hidden"
                   disabled={isLoading}
                 />
+
+                {/* Gallery Input (hidden) */}
+                <input
+                  ref={galleryInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileSelect}
+                  className="hidden"
+                  disabled={isLoading}
+                />
+
                 {isLoading ? (
-                  <>
+                  <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6 text-center">
                     <Loader2 className="w-8 h-8 mx-auto mb-2 animate-spin text-primary" />
                     <p className="text-sm text-muted-foreground">{uploadProgress}</p>
                     <p className="text-xs text-muted-foreground mt-1">Please wait...</p>
-                  </>
+                  </div>
                 ) : (
-                  <>
-                    <Upload className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground">Tap to upload screenshot</p>
-                    <p className="text-xs text-muted-foreground mt-1">JPG, PNG, WebP • Auto-compressed</p>
-                  </>
+                  <div className="grid grid-cols-2 gap-3">
+                    {/* Take Photo Button */}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-24 flex-col gap-2"
+                      onClick={() => cameraInputRef.current?.click()}
+                    >
+                      <Camera className="w-6 h-6" />
+                      <span className="text-xs">Take Photo</span>
+                    </Button>
+
+                    {/* Choose from Gallery Button */}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-24 flex-col gap-2"
+                      onClick={() => galleryInputRef.current?.click()}
+                    >
+                      <FolderOpen className="w-6 h-6" />
+                      <span className="text-xs">Choose from Gallery</span>
+                    </Button>
+                  </div>
                 )}
+
+                <p className="text-xs text-center text-muted-foreground">JPG, PNG • Auto-compressed to 0.5MB</p>
               </div>
             ) : (
               <div className="relative">
@@ -468,7 +440,7 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
                   <X className="h-4 w-4" />
                 </Button>
                 <div className="flex items-center gap-2 mt-2 text-sm text-muted-foreground">
-                  <Image className="w-4 h-4" />
+                  <ImageIcon className="w-4 h-4" />
                   <span className="truncate">{selectedFile?.name}</span>
                   <span className="text-xs">({((selectedFile?.size || 0) / 1024 / 1024).toFixed(2)} MB)</span>
                 </div>
