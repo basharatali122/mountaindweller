@@ -77,35 +77,54 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  const uploadToSupabase = async (file: File): Promise<string> => {
-    const timestamp = Date.now();
-    const fileExt = file.name.split('.').pop() || 'jpg';
-    const fileName = `${userId}/${timestamp}.${fileExt}`;
+  const uploadViaEdgeFunction = async (file: File, depositAmount: number, reference: string): Promise<void> => {
+    console.log("[UPLOAD] Starting Edge Function upload");
+    setUploadProgress("Preparing image...");
 
-    console.log("[UPLOAD] Starting Supabase upload:", fileName);
-    setUploadProgress("Uploading image...");
+    // Get session token
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      throw new Error("Please log in again");
+    }
 
-    const { data, error } = await supabase.storage
-      .from("payment-proofs")
-      .upload(fileName, file, {
-        cacheControl: "3600",
-        upsert: false,
-      });
+    // Convert file to base64
+    const base64 = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        // Remove data URL prefix (e.g., "data:image/jpeg;base64,")
+        const base64Data = result.split(",")[1];
+        resolve(base64Data);
+      };
+      reader.onerror = () => reject(new Error("Failed to read file"));
+      reader.readAsDataURL(file);
+    });
+
+    console.log("[UPLOAD] File converted to base64, length:", base64.length);
+    setUploadProgress("Uploading...");
+
+    // Call Edge Function
+    const { data, error } = await supabase.functions.invoke("upload-payment-proof", {
+      body: {
+        file: base64,
+        fileName: file.name,
+        fileType: file.type,
+        amount: depositAmount,
+        bankReference: reference || null,
+      },
+    });
 
     if (error) {
-      console.error("[UPLOAD] Supabase error:", error);
+      console.error("[UPLOAD] Edge Function error:", error);
       throw new Error(error.message || "Upload failed");
     }
 
-    console.log("[UPLOAD] Upload successful:", data.path);
+    if (!data?.success) {
+      console.error("[UPLOAD] Edge Function returned error:", data?.error);
+      throw new Error(data?.error || "Upload failed");
+    }
 
-    // Get public URL
-    const { data: urlData } = supabase.storage
-      .from("payment-proofs")
-      .getPublicUrl(data.path);
-
-    console.log("[UPLOAD] Public URL:", urlData.publicUrl);
-    return urlData.publicUrl;
+    console.log("[UPLOAD] Success:", data);
   };
 
   const handleSubmit = async () => {
@@ -125,22 +144,8 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
     setUploadProgress("Starting upload...");
 
     try {
-      const imageUrl = await uploadToSupabase(selectedFile);
-
-      console.log("[SUBMIT] Saving to database...");
-      setUploadProgress("Saving request...");
-
-      const { error: insertError } = await supabase.from("deposit_requests").insert({
-        user_id: userId,
-        amount: depositAmount,
-        bank_reference: bankReference || null,
-        payment_proof_url: imageUrl,
-      });
-
-      if (insertError) {
-        console.error("[SUBMIT] Database error:", insertError);
-        throw new Error("Failed to save: " + insertError.message);
-      }
+      // Upload via Edge Function - handles everything server-side
+      await uploadViaEdgeFunction(selectedFile, depositAmount, bankReference);
 
       console.log("[SUBMIT] Success!");
       toast({
