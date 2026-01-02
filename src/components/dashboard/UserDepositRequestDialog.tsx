@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import imageCompression from "browser-image-compression";
 import {
   Dialog,
   DialogContent,
@@ -46,30 +47,85 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
     setTimeout(() => setCopiedField(null), 2000);
   };
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const compressImage = async (file: File): Promise<File> => {
+    const options = {
+      maxSizeMB: 1, // Maximum file size in MB
+      maxWidthOrHeight: 1920, // Maximum width or height
+      useWebWorker: true, // Use web worker for better performance
+      fileType: "image/jpeg", // Convert all images to JPEG (handles HEIC)
+      initialQuality: 0.8, // Initial quality
+    };
+
+    try {
+      setUploadProgress("Compressing image...");
+      const compressedFile = await imageCompression(file, options);
+      console.log("Original file size:", (file.size / 1024 / 1024).toFixed(2), "MB");
+      console.log("Compressed file size:", (compressedFile.size / 1024 / 1024).toFixed(2), "MB");
+      return compressedFile;
+    } catch (error) {
+      console.error("Compression error:", error);
+      throw new Error("Failed to compress image");
+    }
+  };
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Check file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      toast({ title: "File too large", description: "Maximum 5MB allowed", variant: "destructive" });
-      return;
-    }
-
-    // Check file type
+    // Check if file is an image
     if (!file.type.startsWith("image/")) {
       toast({ title: "Invalid file", description: "Please select an image", variant: "destructive" });
       return;
     }
 
-    setSelectedFile(file);
-    
-    // Create preview
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      setPreviewUrl(event.target?.result as string);
-    };
-    reader.readAsDataURL(file);
+    setIsLoading(true);
+    setUploadProgress("Processing image...");
+
+    try {
+      // Compress image if it's larger than 1MB or if it's HEIC/HEIF
+      let processedFile = file;
+      if (file.size > 1 * 1024 * 1024 || file.type === "image/heic" || file.type === "image/heif") {
+        processedFile = await compressImage(file);
+      }
+
+      // Check compressed file size (should be under 5MB after compression)
+      if (processedFile.size > 5 * 1024 * 1024) {
+        toast({ 
+          title: "File too large", 
+          description: "Image is still too large after compression. Please use a smaller image.", 
+          variant: "destructive" 
+        });
+        setIsLoading(false);
+        setUploadProgress("");
+        return;
+      }
+
+      setSelectedFile(processedFile);
+      
+      // Create preview
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setPreviewUrl(event.target?.result as string);
+        setIsLoading(false);
+        setUploadProgress("");
+      };
+      reader.onerror = () => {
+        toast({ title: "Error", description: "Failed to read image", variant: "destructive" });
+        setIsLoading(false);
+        setUploadProgress("");
+      };
+      reader.readAsDataURL(processedFile);
+
+    } catch (error: any) {
+      console.error("File processing error:", error);
+      toast({ 
+        title: "Processing failed", 
+        description: error.message || "Failed to process image", 
+        variant: "destructive" 
+      });
+      setIsLoading(false);
+      setUploadProgress("");
+    }
   };
 
   const clearFile = () => {
@@ -85,27 +141,49 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
     const fileExt = file.name.split('.').pop() || 'jpg';
     const fileName = `${userId}/${timestamp}.${fileExt}`;
 
-    setUploadProgress("Uploading...");
+    setUploadProgress("Uploading to server...");
 
-    // Upload to Supabase Storage
-    const { data, error } = await supabase.storage
-      .from("payment-proofs")
-      .upload(fileName, file, {
-        cacheControl: "3600",
-        upsert: false,
+    try {
+      // Upload to Supabase Storage with proper configuration
+      const { data, error } = await supabase.storage
+        .from("payment-proofs")
+        .upload(fileName, file, {
+          cacheControl: "3600",
+          upsert: false,
+          contentType: file.type || "image/jpeg",
+        });
+
+      if (error) {
+        console.error("Supabase upload error:", {
+          message: error.message,
+          error: error,
+          fileName: fileName,
+          fileSize: file.size,
+          fileType: file.type,
+        });
+        throw new Error("Upload failed: " + error.message);
+      }
+
+      // Get public URL
+      const { data: urlData } = supabase.storage
+        .from("payment-proofs")
+        .getPublicUrl(data.path);
+
+      console.log("Upload successful:", urlData.publicUrl);
+      return urlData.publicUrl;
+
+    } catch (error: any) {
+      console.error("Upload error details:", {
+        message: error.message,
+        error: error,
+        file: {
+          name: file.name,
+          size: file.size,
+          type: file.type,
+        },
       });
-
-    if (error) {
-      console.error("Supabase upload error:", error);
-      throw new Error("Upload failed: " + error.message);
+      throw error;
     }
-
-    // Get public URL
-    const { data: urlData } = supabase.storage
-      .from("payment-proofs")
-      .getPublicUrl(data.path);
-
-    return urlData.publicUrl;
   };
 
   const handleSubmit = async () => {
@@ -138,6 +216,7 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
       });
 
       if (insertError) {
+        console.error("Database insert error:", insertError);
         throw new Error("Failed to save: " + insertError.message);
       }
 
@@ -261,23 +340,33 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
             {!previewUrl ? (
               <div 
                 className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6 text-center cursor-pointer hover:border-primary/50 transition-colors"
-                onClick={() => fileInputRef.current?.click()}
+                onClick={() => !isLoading && fileInputRef.current?.click()}
               >
                 <input
                   ref={fileInputRef}
                   type="file"
                   accept="image/*"
+                  capture="environment"
                   onChange={handleFileSelect}
                   className="hidden"
                   disabled={isLoading}
                 />
-                <Upload className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">
-                  Tap to upload screenshot
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Max 5MB • JPG, PNG, HEIC
-                </p>
+                {isLoading && uploadProgress.includes("Compressing") ? (
+                  <>
+                    <Loader2 className="w-8 h-8 mx-auto mb-2 animate-spin text-primary" />
+                    <p className="text-sm text-muted-foreground">{uploadProgress}</p>
+                  </>
+                ) : (
+                  <>
+                    <Upload className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground">
+                      Tap to upload screenshot
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      All formats supported • Auto-compressed
+                    </p>
+                  </>
+                )}
               </div>
             ) : (
               <div className="relative">
@@ -298,6 +387,7 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
                 <div className="flex items-center gap-2 mt-2 text-sm text-muted-foreground">
                   <Image className="w-4 h-4" />
                   <span className="truncate">{selectedFile?.name}</span>
+                  <span className="text-xs">({(selectedFile?.size || 0 / 1024 / 1024).toFixed(2)} MB)</span>
                 </div>
               </div>
             )}
