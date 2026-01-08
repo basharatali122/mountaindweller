@@ -13,8 +13,18 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Search, Shield, ShieldOff, Wallet } from "lucide-react";
+import { Search, Shield, ShieldOff, Wallet, Trash2 } from "lucide-react";
 import { DepositFundsDialog } from "@/components/admin/DepositFundsDialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface User {
   id: string;
@@ -37,6 +47,9 @@ const AdminUsers = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [depositDialogOpen, setDepositDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<User | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     fetchUsers();
@@ -105,6 +118,51 @@ const AdminUsers = () => {
       fetchUsers();
     } catch (error) {
       toast({ title: "Error updating role", variant: "destructive" });
+    }
+  };
+
+  const confirmDeleteUser = (user: User) => {
+    setUserToDelete(user);
+    setDeleteDialogOpen(true);
+  };
+
+  const deleteUser = async () => {
+    if (!userToDelete) return;
+    
+    setIsDeleting(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-user`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session?.access_token}`,
+          },
+          body: JSON.stringify({ user_id: userToDelete.id }),
+        }
+      );
+
+      const result = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(result.error || "Failed to delete user");
+      }
+
+      toast({ title: "User deleted successfully" });
+      setDeleteDialogOpen(false);
+      setUserToDelete(null);
+      fetchUsers();
+    } catch (error: any) {
+      toast({ 
+        title: "Error deleting user", 
+        description: error.message,
+        variant: "destructive" 
+      });
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -207,6 +265,13 @@ const AdminUsers = () => {
                         </>
                       )}
                     </Button>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => confirmDeleteUser(user)}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
                   </div>
                 </TableCell>
               </TableRow>
@@ -226,6 +291,29 @@ const AdminUsers = () => {
         user={selectedUser}
         onSuccess={fetchUsers}
       />
+
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete User</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete <strong>{userToDelete?.full_name || userToDelete?.email}</strong>? 
+              This will permanently remove all their data including transactions, orders, deposits, withdrawals, and referrals. 
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={deleteUser} 
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting ? "Deleting..." : "Delete User"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AdminLayout>
   );
 };
