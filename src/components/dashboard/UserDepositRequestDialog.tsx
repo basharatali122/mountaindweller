@@ -85,8 +85,9 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
     const options = {
       maxSizeMB: 0.5, // Compress to max 500KB
       maxWidthOrHeight: 1200,
-      useWebWorker: true,
+      useWebWorker: false, // Disable web worker for better mobile compatibility
       fileType: "image/jpeg" as const,
+      initialQuality: 0.8,
     };
     
     try {
@@ -343,7 +344,7 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/*"
+              accept="image/jpeg,image/png,image/jpg,image/webp"
               onChange={handleFileSelect}
               className="hidden"
               disabled={isLoading}
