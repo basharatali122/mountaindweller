@@ -79,23 +79,37 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
   };
 
   const compressImage = async (file: File): Promise<File> => {
-    console.log("[COMPRESS] Original size:", (file.size / 1024 / 1024).toFixed(2), "MB");
+    const fileSizeMB = file.size / 1024 / 1024;
+    console.log("[COMPRESS] Original size:", fileSizeMB.toFixed(2), "MB");
+    
+    // Skip compression if file is already small (under 500KB)
+    if (file.size <= 500 * 1024) {
+      console.log("[COMPRESS] File already small, skipping compression");
+      return file;
+    }
+    
     setUploadProgress("Compressing image...");
     
     const options = {
-      maxSizeMB: 0.5, // Compress to max 500KB
+      maxSizeMB: 0.5,
       maxWidthOrHeight: 1200,
-      useWebWorker: false, // Disable web worker for better mobile compatibility
+      useWebWorker: false,
       fileType: "image/jpeg" as const,
-      initialQuality: 0.8,
+      initialQuality: 0.7,
     };
     
     try {
-      const compressedFile = await imageCompression(file, options);
+      // Set a timeout for compression to prevent hanging
+      const compressionPromise = imageCompression(file, options);
+      const timeoutPromise = new Promise<File>((_, reject) => 
+        setTimeout(() => reject(new Error("Compression timeout")), 10000)
+      );
+      
+      const compressedFile = await Promise.race([compressionPromise, timeoutPromise]);
       console.log("[COMPRESS] Compressed size:", (compressedFile.size / 1024 / 1024).toFixed(2), "MB");
       return compressedFile;
     } catch (error) {
-      console.error("[COMPRESS] Compression failed, using original:", error);
+      console.error("[COMPRESS] Compression failed/timeout, using original:", error);
       return file;
     }
   };
