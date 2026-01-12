@@ -14,7 +14,6 @@ import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Wallet, Copy, CheckCircle, X, Image as ImageIcon, Upload } from "lucide-react";
-import imageCompression from "browser-image-compression";
 
 interface UserDepositRequestDialogProps {
   userId: string;
@@ -78,124 +77,34 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  const compressImage = async (file: File): Promise<File> => {
-    const fileSizeMB = file.size / 1024 / 1024;
-    console.log("[COMPRESS] Original size:", fileSizeMB.toFixed(2), "MB");
-    
-    // Skip compression if file is already small (under 500KB)
-    if (file.size <= 500 * 1024) {
-      console.log("[COMPRESS] File already small, skipping compression");
-      return file;
-    }
-    
-    setUploadProgress("Compressing image...");
-    
-    const options = {
-      maxSizeMB: 0.5,
-      maxWidthOrHeight: 1200,
-      useWebWorker: false,
-      fileType: "image/jpeg" as const,
-      initialQuality: 0.7,
-    };
-    
-    try {
-      // Set a timeout for compression to prevent hanging
-      const compressionPromise = imageCompression(file, options);
-      const timeoutPromise = new Promise<File>((_, reject) => 
-        setTimeout(() => reject(new Error("Compression timeout")), 10000)
-      );
-      
-      const compressedFile = await Promise.race([compressionPromise, timeoutPromise]);
-      console.log("[COMPRESS] Compressed size:", (compressedFile.size / 1024 / 1024).toFixed(2), "MB");
-      return compressedFile;
-    } catch (error) {
-      console.error("[COMPRESS] Compression failed/timeout, using original:", error);
-      return file;
-    }
-  };
+  const uploadToStorage = async (file: File): Promise<string> => {
+    const timestamp = Date.now();
+    const randomStr = Math.random().toString(36).substring(2, 8);
+    const extension = file.name.split(".").pop() || "jpg";
+    const filePath = `${userId}/${timestamp}_${randomStr}.${extension}`;
 
-  const uploadViaFormData = async (file: File, depositAmount: number, reference: string): Promise<void> => {
-    console.log("[UPLOAD] Starting upload process, file size:", (file.size / 1024).toFixed(0), "KB");
-    
-    // Get session token first
-    setUploadProgress("Checking session...");
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-    if (sessionError) {
-      console.error("[UPLOAD] Session error:", sessionError);
-      throw new Error("Session error - please log in again");
-    }
-    if (!session) {
-      throw new Error("Please log in again");
-    }
+    console.log("[UPLOAD] Uploading to storage:", filePath);
 
-    console.log("[UPLOAD] Session valid, user:", session.user.id);
-
-    // Compress image to reduce upload time
-    let uploadFile = file;
-    try {
-      uploadFile = await compressImage(file);
-    } catch (compressError) {
-      console.warn("[UPLOAD] Compression failed, using original file:", compressError);
-    }
-    
-    console.log("[UPLOAD] Final file size:", (uploadFile.size / 1024).toFixed(0), "KB");
-    setUploadProgress("Uploading...");
-
-    const formData = new FormData();
-    formData.append("file", uploadFile, uploadFile.name || "payment-proof.jpg");
-    formData.append("amount", depositAmount.toString());
-    formData.append("bankReference", reference || "");
-
-    const supabaseUrl = "https://xqyiqzqgshjibxdujzvv.supabase.co";
-    const uploadUrl = `${supabaseUrl}/functions/v1/upload-payment-proof`;
-    
-    console.log("[UPLOAD] Sending to:", uploadUrl);
-
-    // 60 second timeout for slow connections
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => {
-      console.error("[UPLOAD] Request timed out after 60s");
-      controller.abort();
-    }, 60000);
-
-    try {
-      const response = await fetch(uploadUrl, {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${session.access_token}`,
-        },
-        body: formData,
-        signal: controller.signal,
+    const { data, error } = await supabase.storage
+      .from("payment-proofs")
+      .upload(filePath, file, {
+        cacheControl: "3600",
+        upsert: true,
       });
 
-      clearTimeout(timeoutId);
-      console.log("[UPLOAD] Response received, status:", response.status);
-
-      const responseText = await response.text();
-      console.log("[UPLOAD] Response body:", responseText.substring(0, 200));
-      
-      let result;
-      try {
-        result = JSON.parse(responseText);
-      } catch {
-        console.error("[UPLOAD] Failed to parse response as JSON");
-        throw new Error("Server returned invalid response");
-      }
-
-      if (!response.ok || !result.success) {
-        console.error("[UPLOAD] Server error:", result.error);
-        throw new Error(result.error || `Upload failed (${response.status})`);
-      }
-
-      console.log("[UPLOAD] Success! URL:", result.url);
-    } catch (error: any) {
-      clearTimeout(timeoutId);
-      console.error("[UPLOAD] Fetch error:", error.name, error.message);
-      if (error.name === "AbortError") {
-        throw new Error("Upload timed out - please try with a smaller image or better connection");
-      }
-      throw error;
+    if (error) {
+      console.error("[UPLOAD] Storage error:", error);
+      throw new Error("Failed to upload file: " + error.message);
     }
+
+    console.log("[UPLOAD] Upload successful:", data.path);
+
+    // Get public URL
+    const { data: urlData } = supabase.storage
+      .from("payment-proofs")
+      .getPublicUrl(filePath);
+
+    return urlData.publicUrl;
   };
 
   const handleSubmit = async () => {
@@ -210,13 +119,30 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
       return;
     }
 
-    console.log("[SUBMIT] Starting...");
+    console.log("[SUBMIT] Starting deposit request...");
     setIsLoading(true);
-    setUploadProgress("Starting upload...");
+    setUploadProgress("Uploading image...");
 
     try {
-      // Upload via FormData - most reliable for mobile
-      await uploadViaFormData(selectedFile, depositAmount, bankReference);
+      // Step 1: Upload image to storage
+      const paymentProofUrl = await uploadToStorage(selectedFile);
+      console.log("[SUBMIT] Image uploaded:", paymentProofUrl);
+
+      // Step 2: Create deposit request in database
+      setUploadProgress("Saving request...");
+      const { error: insertError } = await supabase
+        .from("deposit_requests")
+        .insert({
+          user_id: userId,
+          amount: depositAmount,
+          bank_reference: bankReference || null,
+          payment_proof_url: paymentProofUrl,
+        });
+
+      if (insertError) {
+        console.error("[SUBMIT] Insert error:", insertError);
+        throw new Error("Failed to save deposit request");
+      }
 
       console.log("[SUBMIT] Success!");
       toast({
