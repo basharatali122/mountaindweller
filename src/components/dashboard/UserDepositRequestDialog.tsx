@@ -78,15 +78,20 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
   };
 
   const uploadViaFormData = async (file: File, depositAmount: number, reference: string): Promise<void> => {
-    console.log("[UPLOAD] Starting FormData upload (most reliable for mobile)");
+    console.log("[UPLOAD] Starting FormData upload");
     setUploadProgress("Preparing...");
 
     // Get session token
-    const { data: { session } } = await supabase.auth.getSession();
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError) {
+      console.error("[UPLOAD] Session error:", sessionError);
+      throw new Error("Session error - please log in again");
+    }
     if (!session) {
       throw new Error("Please log in again");
     }
 
+    console.log("[UPLOAD] Session obtained, preparing upload...");
     setUploadProgress("Uploading...");
 
     // Use FormData - no base64 conversion needed, works better on mobile
@@ -95,58 +100,53 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
     formData.append("amount", depositAmount.toString());
     formData.append("bankReference", reference || "");
 
-    // Get the Supabase URL from the client
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    // Get the Supabase URL - use project ID directly for reliability
+    const supabaseUrl = `https://xqyiqzqgshjibxdujzvv.supabase.co`;
+    const uploadUrl = `${supabaseUrl}/functions/v1/upload-payment-proof`;
     
-    // Use XMLHttpRequest for better mobile compatibility
-    return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      
-      xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable) {
-          const percent = Math.round((e.loaded / e.total) * 100);
-          setUploadProgress(`Uploading ${percent}%`);
-          console.log("[UPLOAD] Progress:", percent + "%");
-        }
-      };
+    console.log("[UPLOAD] URL:", uploadUrl);
+    
+    // Use fetch with AbortController for timeout - more reliable than XHR on modern mobile browsers
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minute timeout
 
-      xhr.onload = () => {
-        console.log("[UPLOAD] XHR complete, status:", xhr.status);
-        try {
-          const response = JSON.parse(xhr.responseText);
-          console.log("[UPLOAD] Response:", response);
-          
-          if (xhr.status >= 200 && xhr.status < 300 && response.success) {
-            resolve();
-          } else {
-            reject(new Error(response.error || "Upload failed"));
-          }
-        } catch (e) {
-          console.error("[UPLOAD] Parse error:", e);
-          reject(new Error("Invalid response from server"));
-        }
-      };
+    try {
+      console.log("[UPLOAD] Sending fetch request...");
+      const response = await fetch(uploadUrl, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${session.access_token}`,
+        },
+        body: formData,
+        signal: controller.signal,
+      });
 
-      xhr.onerror = () => {
-        console.error("[UPLOAD] XHR error");
-        reject(new Error("Network error - check your connection"));
-      };
+      clearTimeout(timeoutId);
+      console.log("[UPLOAD] Response status:", response.status);
 
-      xhr.ontimeout = () => {
-        console.error("[UPLOAD] XHR timeout");
-        reject(new Error("Upload timed out - try a smaller image"));
-      };
+      const responseText = await response.text();
+      console.log("[UPLOAD] Response text:", responseText);
 
-      // 2 minute timeout
-      xhr.timeout = 120000;
+      let result;
+      try {
+        result = JSON.parse(responseText);
+      } catch (parseError) {
+        console.error("[UPLOAD] JSON parse error:", parseError);
+        throw new Error("Invalid server response");
+      }
 
-      xhr.open("POST", `${supabaseUrl}/functions/v1/upload-payment-proof`);
-      xhr.setRequestHeader("Authorization", `Bearer ${session.access_token}`);
-      // Don't set Content-Type - browser will set it correctly with boundary for FormData
-      
-      console.log("[UPLOAD] Sending FormData...");
-      xhr.send(formData);
-    });
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || `Upload failed (${response.status})`);
+      }
+
+      console.log("[UPLOAD] Success:", result);
+    } catch (error: any) {
+      clearTimeout(timeoutId);
+      if (error.name === "AbortError") {
+        throw new Error("Upload timed out - try a smaller image");
+      }
+      throw error;
+    }
   };
 
   const handleSubmit = async () => {
