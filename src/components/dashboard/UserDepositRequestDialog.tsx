@@ -115,7 +115,7 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
   };
 
   const uploadViaFormData = async (file: File, depositAmount: number, reference: string): Promise<void> => {
-    console.log("[UPLOAD] Starting upload process");
+    console.log("[UPLOAD] Starting upload process, file size:", (file.size / 1024).toFixed(0), "KB");
     
     // Get session token first
     setUploadProgress("Checking session...");
@@ -128,26 +128,37 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
       throw new Error("Please log in again");
     }
 
+    console.log("[UPLOAD] Session valid, user:", session.user.id);
+
     // Compress image to reduce upload time
-    const compressedFile = await compressImage(file);
+    let uploadFile = file;
+    try {
+      uploadFile = await compressImage(file);
+    } catch (compressError) {
+      console.warn("[UPLOAD] Compression failed, using original file:", compressError);
+    }
     
-    console.log("[UPLOAD] Preparing FormData...");
+    console.log("[UPLOAD] Final file size:", (uploadFile.size / 1024).toFixed(0), "KB");
     setUploadProgress("Uploading...");
 
     const formData = new FormData();
-    formData.append("file", compressedFile);
+    formData.append("file", uploadFile, uploadFile.name || "payment-proof.jpg");
     formData.append("amount", depositAmount.toString());
     formData.append("bankReference", reference || "");
 
-    const supabaseUrl = `https://xqyiqzqgshjibxdujzvv.supabase.co`;
+    const supabaseUrl = "https://xqyiqzqgshjibxdujzvv.supabase.co";
     const uploadUrl = `${supabaseUrl}/functions/v1/upload-payment-proof`;
     
-    // Shorter timeout since file is compressed
+    console.log("[UPLOAD] Sending to:", uploadUrl);
+
+    // 60 second timeout for slow connections
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 45000); // 45 second timeout
+    const timeoutId = setTimeout(() => {
+      console.error("[UPLOAD] Request timed out after 60s");
+      controller.abort();
+    }, 60000);
 
     try {
-      console.log("[UPLOAD] Sending request...");
       const response = await fetch(uploadUrl, {
         method: "POST",
         headers: {
@@ -158,25 +169,30 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
       });
 
       clearTimeout(timeoutId);
-      console.log("[UPLOAD] Response status:", response.status);
+      console.log("[UPLOAD] Response received, status:", response.status);
 
       const responseText = await response.text();
+      console.log("[UPLOAD] Response body:", responseText.substring(0, 200));
+      
       let result;
       try {
         result = JSON.parse(responseText);
       } catch {
-        throw new Error("Invalid server response");
+        console.error("[UPLOAD] Failed to parse response as JSON");
+        throw new Error("Server returned invalid response");
       }
 
       if (!response.ok || !result.success) {
+        console.error("[UPLOAD] Server error:", result.error);
         throw new Error(result.error || `Upload failed (${response.status})`);
       }
 
-      console.log("[UPLOAD] Success!");
+      console.log("[UPLOAD] Success! URL:", result.url);
     } catch (error: any) {
       clearTimeout(timeoutId);
+      console.error("[UPLOAD] Fetch error:", error.name, error.message);
       if (error.name === "AbortError") {
-        throw new Error("Upload timed out - please try again");
+        throw new Error("Upload timed out - please try with a smaller image or better connection");
       }
       throw error;
     }
