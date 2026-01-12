@@ -14,6 +14,8 @@ import vitaminCSerumImg from "@/assets/products/vitamin-c-serum.png";
 import nevolisImg from "@/assets/products/nevolis-cream.png";
 import tuttiFruttiFacialImg from "@/assets/products/tutti-frutti-facial.png";
 import alpineGlowImg from "@/assets/products/alpine-glow.png";
+import hairConditionerImg from "@/assets/products/hair-conditioner.png";
+import urgentFacialImg from "@/assets/products/urgent-facial.png";
 
 const defaultImages: Record<string, string> = {
   "md shampoo": shampooImg,
@@ -23,6 +25,8 @@ const defaultImages: Record<string, string> = {
   "cream nevolis": nevolisImg,
   "tutti frutti urgent facial": tuttiFruttiFacialImg,
   "pure alpine glow": alpineGlowImg,
+  "hair conditioner": hairConditionerImg,
+  "urgent facial": urgentFacialImg,
 };
 
 interface Product {
