@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Wallet, Copy, CheckCircle, X, Image as ImageIcon, Upload } from "lucide-react";
+import imageCompression from "browser-image-compression";
 
 interface UserDepositRequestDialogProps {
   userId: string;
@@ -77,11 +78,32 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  const uploadViaFormData = async (file: File, depositAmount: number, reference: string): Promise<void> => {
-    console.log("[UPLOAD] Starting FormData upload");
-    setUploadProgress("Preparing...");
+  const compressImage = async (file: File): Promise<File> => {
+    console.log("[COMPRESS] Original size:", (file.size / 1024 / 1024).toFixed(2), "MB");
+    setUploadProgress("Compressing image...");
+    
+    const options = {
+      maxSizeMB: 0.5, // Compress to max 500KB
+      maxWidthOrHeight: 1200,
+      useWebWorker: true,
+      fileType: "image/jpeg" as const,
+    };
+    
+    try {
+      const compressedFile = await imageCompression(file, options);
+      console.log("[COMPRESS] Compressed size:", (compressedFile.size / 1024 / 1024).toFixed(2), "MB");
+      return compressedFile;
+    } catch (error) {
+      console.error("[COMPRESS] Compression failed, using original:", error);
+      return file;
+    }
+  };
 
-    // Get session token
+  const uploadViaFormData = async (file: File, depositAmount: number, reference: string): Promise<void> => {
+    console.log("[UPLOAD] Starting upload process");
+    
+    // Get session token first
+    setUploadProgress("Checking session...");
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();
     if (sessionError) {
       console.error("[UPLOAD] Session error:", sessionError);
@@ -91,27 +113,26 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
       throw new Error("Please log in again");
     }
 
-    console.log("[UPLOAD] Session obtained, preparing upload...");
+    // Compress image to reduce upload time
+    const compressedFile = await compressImage(file);
+    
+    console.log("[UPLOAD] Preparing FormData...");
     setUploadProgress("Uploading...");
 
-    // Use FormData - no base64 conversion needed, works better on mobile
     const formData = new FormData();
-    formData.append("file", file);
+    formData.append("file", compressedFile);
     formData.append("amount", depositAmount.toString());
     formData.append("bankReference", reference || "");
 
-    // Get the Supabase URL - use project ID directly for reliability
     const supabaseUrl = `https://xqyiqzqgshjibxdujzvv.supabase.co`;
     const uploadUrl = `${supabaseUrl}/functions/v1/upload-payment-proof`;
     
-    console.log("[UPLOAD] URL:", uploadUrl);
-    
-    // Use fetch with AbortController for timeout - more reliable than XHR on modern mobile browsers
+    // Shorter timeout since file is compressed
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minute timeout
+    const timeoutId = setTimeout(() => controller.abort(), 45000); // 45 second timeout
 
     try {
-      console.log("[UPLOAD] Sending fetch request...");
+      console.log("[UPLOAD] Sending request...");
       const response = await fetch(uploadUrl, {
         method: "POST",
         headers: {
@@ -125,13 +146,10 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
       console.log("[UPLOAD] Response status:", response.status);
 
       const responseText = await response.text();
-      console.log("[UPLOAD] Response text:", responseText);
-
       let result;
       try {
         result = JSON.parse(responseText);
-      } catch (parseError) {
-        console.error("[UPLOAD] JSON parse error:", parseError);
+      } catch {
         throw new Error("Invalid server response");
       }
 
@@ -139,11 +157,11 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
         throw new Error(result.error || `Upload failed (${response.status})`);
       }
 
-      console.log("[UPLOAD] Success:", result);
+      console.log("[UPLOAD] Success!");
     } catch (error: any) {
       clearTimeout(timeoutId);
       if (error.name === "AbortError") {
-        throw new Error("Upload timed out - try a smaller image");
+        throw new Error("Upload timed out - please try again");
       }
       throw error;
     }
