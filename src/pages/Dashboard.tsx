@@ -12,6 +12,7 @@ import { WithdrawalRequestDialog } from "@/components/dashboard/WithdrawalReques
 import { ReferralEarnings } from "@/components/dashboard/ReferralEarnings";
 import { UserDepositRequestDialog } from "@/components/dashboard/UserDepositRequestDialog";
 import { DepositHistory } from "@/components/dashboard/DepositHistory";
+import { DirectInvestmentDialog } from "@/components/dashboard/DirectInvestmentDialog";
 import { 
   Wallet, 
   Users, 
@@ -332,7 +333,7 @@ const Dashboard = () => {
                 <h2 className="font-display text-xl font-bold text-foreground mb-4">
                   Quick Actions
                 </h2>
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
                   <UserDepositRequestDialog
                     userId={user?.id || ""}
                     onSuccess={fetchData}
@@ -343,6 +344,13 @@ const Dashboard = () => {
                       <span className="text-xs">Buy Package</span>
                     </Button>
                   </Link>
+                  <DirectInvestmentDialog
+                    userId={user?.id || ""}
+                    walletBalance={wallet?.balance || 0}
+                    hasPackage={false}
+                    hasInvestment={false}
+                    onSuccess={fetchData}
+                  />
                   <WithdrawalRequestDialog
                     userId={user?.id || ""}
                     walletBalance={wallet?.balance || 0}

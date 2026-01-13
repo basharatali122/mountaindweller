@@ -50,6 +50,39 @@ export type Database = {
         }
         Relationships: []
       }
+      investments: {
+        Row: {
+          amount: number
+          bonus_amount: number
+          bonus_percentage: number
+          created_at: string
+          id: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          bonus_amount: number
+          bonus_percentage?: number
+          created_at?: string
+          id?: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          bonus_amount?: number
+          bonus_percentage?: number
+          created_at?: string
+          id?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       order_items: {
         Row: {
           created_at: string
@@ -130,7 +163,10 @@ export type Database = {
           id: string
           investment_amount: number
           is_active: boolean | null
+          level1_bonus: number
+          level2_bonus: number
           name: string
+          products_included: Json | null
         }
         Insert: {
           bonus_amount: number
@@ -139,7 +175,10 @@ export type Database = {
           id?: string
           investment_amount: number
           is_active?: boolean | null
+          level1_bonus?: number
+          level2_bonus?: number
           name: string
+          products_included?: Json | null
         }
         Update: {
           bonus_amount?: number
@@ -148,7 +187,10 @@ export type Database = {
           id?: string
           investment_amount?: number
           is_active?: boolean | null
+          level1_bonus?: number
+          level2_bonus?: number
           name?: string
+          products_included?: Json | null
         }
         Relationships: []
       }
@@ -247,6 +289,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      referral_bonuses: {
+        Row: {
+          bonus_amount: number
+          created_at: string
+          id: string
+          level: number
+          referrer_id: string
+          source_amount: number
+          source_id: string | null
+          source_type: string
+          user_id: string
+        }
+        Insert: {
+          bonus_amount?: number
+          created_at?: string
+          id?: string
+          level: number
+          referrer_id: string
+          source_amount: number
+          source_id?: string | null
+          source_type: string
+          user_id: string
+        }
+        Update: {
+          bonus_amount?: number
+          created_at?: string
+          id?: string
+          level?: number
+          referrer_id?: string
+          source_amount?: number
+          source_id?: string | null
+          source_type?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       referrals: {
         Row: {
@@ -425,6 +503,10 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      make_direct_investment: {
+        Args: { p_amount: number; p_user_id: string }
+        Returns: Json
       }
       process_deposit_request: {
         Args: {
