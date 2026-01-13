@@ -10,7 +10,8 @@ import {
   ChevronLeft,
   LogOut,
   ArrowDownToLine,
-  ClipboardList
+  ClipboardList,
+  Banknote
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -24,6 +25,7 @@ const menuItems = [
   { title: "Products", url: "/admin/products", icon: ShoppingBag },
   { title: "Orders", url: "/admin/orders", icon: ClipboardList },
   { title: "Deposits", url: "/admin/deposits", icon: ArrowDownToLine },
+  { title: "Investments", url: "/admin/investments", icon: Banknote },
   { title: "Withdrawals", url: "/admin/withdrawals", icon: Wallet },
   { title: "Referrals", url: "/admin/referrals", icon: Link2 },
 ];
