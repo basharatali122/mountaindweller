@@ -83,7 +83,17 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
     const extension = file.name.split(".").pop() || "jpg";
     const filePath = `${userId}/${timestamp}_${randomStr}.${extension}`;
 
-    console.log("[UPLOAD] Uploading to storage:", filePath);
+    console.log("[UPLOAD] Starting upload to storage:", filePath);
+    console.log("[UPLOAD] File details:", { name: file.name, type: file.type, size: file.size });
+
+    // First verify the session is active
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError || !sessionData.session) {
+      console.error("[UPLOAD] Session error:", sessionError);
+      throw new Error("Session expired. Please login again.");
+    }
+
+    console.log("[UPLOAD] Session verified, user:", sessionData.session.user.id);
 
     const { data, error } = await supabase.storage
       .from("payment-proofs")
@@ -104,6 +114,7 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
       .from("payment-proofs")
       .getPublicUrl(filePath);
 
+    console.log("[UPLOAD] Public URL:", urlData.publicUrl);
     return urlData.publicUrl;
   };
 

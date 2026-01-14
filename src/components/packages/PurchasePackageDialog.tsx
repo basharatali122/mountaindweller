@@ -65,7 +65,7 @@ export const PurchasePackageDialog = ({
 
       if (error) throw error;
 
-      const result = data as { success: boolean; error?: string; message?: string; bonus_amount?: number };
+      const result = data as { success: boolean; error?: string; message?: string };
 
       if (!result.success) {
         throw new Error(result.error || "Purchase failed");
@@ -73,7 +73,7 @@ export const PurchasePackageDialog = ({
 
       toast({
         title: "Package purchased!",
-        description: `You've received ${result.bonus_amount?.toLocaleString()} PKR bonus!`,
+        description: `You've successfully purchased the ${packageName} package. Your referrer has received their bonus!`,
       });
 
       setOpen(false);
@@ -149,8 +149,16 @@ export const PurchasePackageDialog = ({
               <span className="font-semibold text-foreground">{investmentAmount.toLocaleString()} PKR</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Instant Bonus:</span>
-              <span className="font-semibold text-accent">+{bonusAmount.toLocaleString()} PKR</span>
+              <span className="text-muted-foreground">Referrer Bonus (L1):</span>
+              <span className="font-semibold text-accent">
+                {bonusAmount >= 20000 ? '2,000' : bonusAmount >= 6000 ? '1,000' : '500'} PKR
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Referrer Bonus (L2):</span>
+              <span className="font-semibold text-primary">
+                {bonusAmount >= 20000 ? '1,000' : bonusAmount >= 6000 ? '500' : '200'} PKR
+              </span>
             </div>
             <div className="border-t border-border pt-2 mt-2">
               <div className="flex justify-between">

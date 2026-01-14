@@ -214,10 +214,13 @@ const Packages = () => {
                         isPopular ? "text-primary-foreground/70" : "text-muted-foreground"
                       }`}
                     >
-                      Instant Bonus
+                      Referral Rewards
                     </div>
-                    <div className="font-display text-3xl font-bold text-accent">
-                      {pkg.bonus_amount.toLocaleString()} <span className="text-base">PKR</span>
+                    <div className="font-display text-2xl font-bold text-accent">
+                      Level 1: {pkg.bonus_amount >= 20000 ? '2,000' : pkg.bonus_amount >= 6000 ? '1,000' : '500'} <span className="text-sm">PKR</span>
+                    </div>
+                    <div className="font-display text-lg font-medium text-accent/70 mt-1">
+                      Level 2: {pkg.bonus_amount >= 20000 ? '1,000' : pkg.bonus_amount >= 6000 ? '500' : '200'} <span className="text-sm">PKR</span>
                     </div>
                   </div>
 
@@ -273,30 +276,36 @@ const Packages = () => {
               </h2>
             </div>
 
-            <div className="max-w-2xl mx-auto bg-card rounded-2xl border border-border overflow-hidden">
+            <div className="max-w-3xl mx-auto bg-card rounded-2xl border border-border overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-primary text-primary-foreground">
                     <tr>
-                      <th className="px-6 py-4 text-left font-display font-semibold">Investment (PKR)</th>
-                      <th className="px-6 py-4 text-center font-display font-semibold">Bonus (PKR)</th>
-                      <th className="px-6 py-4 text-center font-display font-semibold">Return</th>
+                      <th className="px-4 py-4 text-left font-display font-semibold">Investment</th>
+                      <th className="px-4 py-4 text-center font-display font-semibold">Level 1 Bonus</th>
+                      <th className="px-4 py-4 text-center font-display font-semibold">Level 2 Bonus</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {packages.map((pkg) => (
-                      <tr key={pkg.id} className="hover:bg-secondary/50 transition-colors">
-                        <td className="px-6 py-4 font-medium text-foreground">{pkg.investment_amount.toLocaleString()}</td>
-                        <td className="px-6 py-4 text-center">
-                          <span className="inline-block bg-accent/10 text-accent font-semibold px-3 py-1 rounded-full text-sm">
-                            {pkg.bonus_amount.toLocaleString()}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 text-center text-muted-foreground">
-                          {((pkg.bonus_amount / pkg.investment_amount) * 100).toFixed(0)}%
-                        </td>
-                      </tr>
-                    ))}
+                    {packages.map((pkg) => {
+                      const level1 = pkg.bonus_amount >= 20000 ? 2000 : pkg.bonus_amount >= 6000 ? 1000 : 500;
+                      const level2 = pkg.bonus_amount >= 20000 ? 1000 : pkg.bonus_amount >= 6000 ? 500 : 200;
+                      return (
+                        <tr key={pkg.id} className="hover:bg-secondary/50 transition-colors">
+                          <td className="px-4 py-4 font-medium text-foreground">{pkg.investment_amount.toLocaleString()} PKR</td>
+                          <td className="px-4 py-4 text-center">
+                            <span className="inline-block bg-accent/10 text-accent font-semibold px-3 py-1 rounded-full text-sm">
+                              {level1.toLocaleString()} PKR
+                            </span>
+                          </td>
+                          <td className="px-4 py-4 text-center">
+                            <span className="inline-block bg-primary/10 text-primary font-semibold px-3 py-1 rounded-full text-sm">
+                              {level2.toLocaleString()} PKR
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

@@ -27,24 +27,24 @@ interface DirectInvestmentDialogProps {
 const INVESTMENT_OPTIONS = [
   { 
     amount: 5000, 
-    bonus: 1500, 
-    percentage: 30,
+    level1Bonus: 500, 
+    level2Bonus: 250,
     label: "PKR 5,000",
-    description: "30% Return = PKR 1,500 Bonus"
+    description: "Level 1: 10% | Level 2: 5%"
   },
   { 
     amount: 10000, 
-    bonus: 3000, 
-    percentage: 30,
+    level1Bonus: 1000, 
+    level2Bonus: 500,
     label: "PKR 10,000",
-    description: "30% Return = PKR 3,000 Bonus"
+    description: "Level 1: 10% | Level 2: 5%"
   },
   { 
     amount: 15000, 
-    bonus: 6000, 
-    percentage: 40,
+    level1Bonus: 1500, 
+    level2Bonus: 750,
     label: "PKR 15,000",
-    description: "40% Return = PKR 6,000 Bonus"
+    description: "Level 1: 10% | Level 2: 5%"
   },
 ];
 
@@ -60,7 +60,6 @@ export const DirectInvestmentDialog = ({
   const [selectedAmount, setSelectedAmount] = useState<number>(5000);
   const { toast } = useToast();
 
-  const selectedOption = INVESTMENT_OPTIONS.find(o => o.amount === selectedAmount);
   const canAfford = walletBalance >= selectedAmount;
 
   const handleInvest = async () => {
@@ -83,7 +82,7 @@ export const DirectInvestmentDialog = ({
 
       toast({
         title: "Investment Successful!",
-        description: `You've invested ${selectedAmount.toLocaleString()} PKR and received ${selectedOption?.bonus.toLocaleString()} PKR bonus.`,
+        description: `You've invested ${selectedAmount.toLocaleString()} PKR. Your referrer will receive their bonus!`,
       });
       
       setOpen(false);
@@ -133,7 +132,7 @@ export const DirectInvestmentDialog = ({
             Direct Investment
           </DialogTitle>
           <DialogDescription>
-            Invest without buying a package and earn instant bonus!
+            Invest without buying a package. Your referrer earns bonus rewards!
           </DialogDescription>
         </DialogHeader>
 
@@ -176,8 +175,8 @@ export const DirectInvestmentDialog = ({
                         <p className="text-xs text-muted-foreground">{option.description}</p>
                       </div>
                       <div className="text-right">
-                        <p className="text-sm font-bold text-accent">+{option.bonus.toLocaleString()}</p>
-                        <p className="text-xs text-muted-foreground">{option.percentage}% Return</p>
+                        <p className="text-xs text-muted-foreground">Referrer gets</p>
+                        <p className="text-sm font-bold text-accent">{option.level1Bonus.toLocaleString()} PKR</p>
                       </div>
                     </div>
                   </Label>
