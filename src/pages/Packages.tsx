@@ -23,7 +23,7 @@ const Packages = () => {
   const [user, setUser] = useState<User | null>(null);
   const [packages, setPackages] = useState<PackageData[]>([]);
   const [walletBalance, setWalletBalance] = useState(0);
-  const [userPackageId, setUserPackageId] = useState<string | null>(null);
+  const [purchasedPackageIds, setPurchasedPackageIds] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -47,7 +47,7 @@ const Packages = () => {
       fetchUserData();
     } else {
       setWalletBalance(0);
-      setUserPackageId(null);
+      setPurchasedPackageIds([]);
     }
   }, [user]);
 
@@ -78,13 +78,20 @@ const Packages = () => {
     if (!user) return;
     
     try {
-      const [walletRes, profileRes] = await Promise.all([
+      // Fetch wallet balance and user's purchased packages from orders
+      const [walletRes, ordersRes] = await Promise.all([
         supabase.from("wallets").select("balance").eq("user_id", user.id).maybeSingle(),
-        supabase.from("profiles").select("package_id").eq("id", user.id).maybeSingle(),
+        supabase
+          .from("order_items")
+          .select("product_id, orders!inner(user_id)")
+          .eq("orders.user_id", user.id),
       ]);
 
       setWalletBalance(walletRes.data?.balance || 0);
-      setUserPackageId(profileRes.data?.package_id || null);
+      
+      // Extract unique package IDs from order items (packages are stored as product_id)
+      const purchasedIds = ordersRes.data?.map(item => item.product_id) || [];
+      setPurchasedPackageIds([...new Set(purchasedIds)]);
     } catch (error) {
       console.error("Error fetching user data:", error);
     }
@@ -252,7 +259,7 @@ const Packages = () => {
                     bonusAmount={pkg.bonus_amount}
                     walletBalance={walletBalance}
                     isLoggedIn={!!user}
-                    hasPackage={!!userPackageId}
+                    hasPackage={purchasedPackageIds.includes(pkg.id)}
                     onSuccess={handlePurchaseSuccess}
                     variant={isPopular ? "popular" : "default"}
                   />
