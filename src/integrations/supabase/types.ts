@@ -122,13 +122,6 @@ export type Database = {
             referencedRelation: "orders"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "order_items_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "products"
-            referencedColumns: ["id"]
-          },
         ]
       }
       orders: {
@@ -543,30 +536,17 @@ export type Database = {
         Args: { p_package_id: string; p_user_id: string }
         Returns: Json
       }
-      purchase_products:
-        | {
-            Args: {
-              p_delivery_address?: string
-              p_delivery_city?: string
-              p_delivery_notes?: string
-              p_delivery_phone?: string
-              p_items: Json
-              p_user_id: string
-            }
-            Returns: Json
-          }
-        | { Args: { p_items: Json; p_user_id: string }; Returns: Json }
-        | {
-            Args: {
-              p_delivery_address?: string
-              p_delivery_city?: string
-              p_delivery_notes?: string
-              p_delivery_phone?: string
-              p_items: Json
-              p_user_id: string
-            }
-            Returns: Json
-          }
+      purchase_products: {
+        Args: {
+          p_delivery_address?: string
+          p_delivery_city?: string
+          p_delivery_notes?: string
+          p_delivery_phone?: string
+          p_items: Json
+          p_user_id: string
+        }
+        Returns: Json
+      }
     }
     Enums: {
       app_role: "admin" | "user"
