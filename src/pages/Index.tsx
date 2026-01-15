@@ -152,7 +152,7 @@ const Index = () => {
             {[
               { name: "Starter", amount: "Rs. 5,000", bonus: "Rs. 1,500" },
               { name: "Growth", amount: "Rs. 10,000", bonus: "Rs. 3,500", popular: true },
-              { name: "Premium", amount: "Rs. 25,000", bonus: "Rs. 10,000" },
+              { name: "Premium", amount: "Rs. 15,000", bonus: "Rs. 6,700" },
             ].map((pkg, index) => (
               <div
                 key={index}
