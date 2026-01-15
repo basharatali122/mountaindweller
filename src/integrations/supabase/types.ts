@@ -134,6 +134,10 @@ export type Database = {
       orders: {
         Row: {
           created_at: string
+          delivery_address: string | null
+          delivery_city: string | null
+          delivery_notes: string | null
+          delivery_phone: string | null
           id: string
           status: string
           total_amount: number
@@ -141,6 +145,10 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          delivery_address?: string | null
+          delivery_city?: string | null
+          delivery_notes?: string | null
+          delivery_phone?: string | null
           id?: string
           status?: string
           total_amount: number
@@ -148,6 +156,10 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          delivery_address?: string | null
+          delivery_city?: string | null
+          delivery_notes?: string | null
+          delivery_phone?: string | null
           id?: string
           status?: string
           total_amount?: number
@@ -528,10 +540,19 @@ export type Database = {
         Args: { p_package_id: string; p_user_id: string }
         Returns: Json
       }
-      purchase_products: {
-        Args: { p_items: Json; p_user_id: string }
-        Returns: Json
-      }
+      purchase_products:
+        | {
+            Args: {
+              p_delivery_address?: string
+              p_delivery_city?: string
+              p_delivery_notes?: string
+              p_delivery_phone?: string
+              p_items: Json
+              p_user_id: string
+            }
+            Returns: Json
+          }
+        | { Args: { p_items: Json; p_user_id: string }; Returns: Json }
     }
     Enums: {
       app_role: "admin" | "user"

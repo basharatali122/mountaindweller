@@ -11,7 +11,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Search, Package, ChevronDown, ChevronUp } from "lucide-react";
+import { Search, Package, ChevronDown, ChevronUp, MapPin, Phone, Building2, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Collapsible,
@@ -36,6 +36,10 @@ interface Order {
   user_email?: string;
   user_name?: string;
   items?: OrderItem[];
+  delivery_address?: string;
+  delivery_phone?: string;
+  delivery_city?: string;
+  delivery_notes?: string;
 }
 
 const AdminOrders = () => {
@@ -222,31 +226,82 @@ const AdminOrders = () => {
                   <CollapsibleContent asChild>
                     <TableRow className="bg-secondary/30">
                       <TableCell colSpan={7} className="p-0">
-                        <div className="p-4 space-y-2">
-                          <p className="text-sm font-medium text-muted-foreground mb-2">Order Items</p>
-                          <div className="bg-background rounded-lg border border-border overflow-hidden">
-                            <Table>
-                              <TableHeader>
-                                <TableRow>
-                                  <TableHead>Product</TableHead>
-                                  <TableHead>Quantity</TableHead>
-                                  <TableHead>Unit Price</TableHead>
-                                  <TableHead>Total</TableHead>
-                                </TableRow>
-                              </TableHeader>
-                              <TableBody>
-                                {order.items?.map((item) => (
-                                  <TableRow key={item.id}>
-                                    <TableCell className="font-medium">{item.product_name}</TableCell>
-                                    <TableCell>{item.quantity}</TableCell>
-                                    <TableCell>Rs. {item.unit_price.toLocaleString()}</TableCell>
-                                    <TableCell className="font-semibold">
-                                      Rs. {item.total_price.toLocaleString()}
-                                    </TableCell>
+                        <div className="p-4 space-y-4">
+                          {/* Delivery Details Section */}
+                          {(order.delivery_address || order.delivery_phone || order.delivery_city) && (
+                            <div className="bg-primary/5 rounded-lg border border-primary/20 p-4">
+                              <p className="text-sm font-medium text-primary mb-3 flex items-center gap-2">
+                                <MapPin className="w-4 h-4" />
+                                Delivery Details
+                              </p>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                {order.delivery_address && (
+                                  <div className="flex items-start gap-2">
+                                    <MapPin className="w-4 h-4 text-muted-foreground mt-0.5" />
+                                    <div>
+                                      <p className="text-xs text-muted-foreground">Address</p>
+                                      <p className="text-sm font-medium">{order.delivery_address}</p>
+                                    </div>
+                                  </div>
+                                )}
+                                {order.delivery_phone && (
+                                  <div className="flex items-start gap-2">
+                                    <Phone className="w-4 h-4 text-muted-foreground mt-0.5" />
+                                    <div>
+                                      <p className="text-xs text-muted-foreground">Phone</p>
+                                      <p className="text-sm font-medium">{order.delivery_phone}</p>
+                                    </div>
+                                  </div>
+                                )}
+                                {order.delivery_city && (
+                                  <div className="flex items-start gap-2">
+                                    <Building2 className="w-4 h-4 text-muted-foreground mt-0.5" />
+                                    <div>
+                                      <p className="text-xs text-muted-foreground">City</p>
+                                      <p className="text-sm font-medium">{order.delivery_city}</p>
+                                    </div>
+                                  </div>
+                                )}
+                                {order.delivery_notes && (
+                                  <div className="flex items-start gap-2 md:col-span-2">
+                                    <FileText className="w-4 h-4 text-muted-foreground mt-0.5" />
+                                    <div>
+                                      <p className="text-xs text-muted-foreground">Delivery Notes</p>
+                                      <p className="text-sm font-medium">{order.delivery_notes}</p>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                          
+                          {/* Order Items Section */}
+                          <div>
+                            <p className="text-sm font-medium text-muted-foreground mb-2">Order Items</p>
+                            <div className="bg-background rounded-lg border border-border overflow-hidden">
+                              <Table>
+                                <TableHeader>
+                                  <TableRow>
+                                    <TableHead>Product</TableHead>
+                                    <TableHead>Quantity</TableHead>
+                                    <TableHead>Unit Price</TableHead>
+                                    <TableHead>Total</TableHead>
                                   </TableRow>
-                                ))}
-                              </TableBody>
-                            </Table>
+                                </TableHeader>
+                                <TableBody>
+                                  {order.items?.map((item) => (
+                                    <TableRow key={item.id}>
+                                      <TableCell className="font-medium">{item.product_name}</TableCell>
+                                      <TableCell>{item.quantity}</TableCell>
+                                      <TableCell>Rs. {item.unit_price.toLocaleString()}</TableCell>
+                                      <TableCell className="font-semibold">
+                                        Rs. {item.total_price.toLocaleString()}
+                                      </TableCell>
+                                    </TableRow>
+                                  ))}
+                                </TableBody>
+                              </Table>
+                            </div>
                           </div>
                         </div>
                       </TableCell>
