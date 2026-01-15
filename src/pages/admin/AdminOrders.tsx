@@ -11,13 +11,21 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Search, Package, ChevronDown, ChevronUp, MapPin, Phone, Building2, FileText } from "lucide-react";
+import { Search, Package, ChevronDown, ChevronUp, MapPin, Phone, Building2, FileText, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useToast } from "@/hooks/use-toast";
 
 interface OrderItem {
   id: string;
@@ -42,11 +50,23 @@ interface Order {
   delivery_notes?: string;
 }
 
+const ORDER_STATUSES = [
+  { value: "pending", label: "Pending", color: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20" },
+  { value: "processing", label: "Processing", color: "bg-blue-500/10 text-blue-500 border-blue-500/20" },
+  { value: "shipped", label: "Shipped", color: "bg-purple-500/10 text-purple-500 border-purple-500/20" },
+  { value: "delivered", label: "Delivered", color: "bg-green-500/10 text-green-500 border-green-500/20" },
+  { value: "completed", label: "Completed", color: "bg-green-500/10 text-green-500 border-green-500/20" },
+  { value: "cancelled", label: "Cancelled", color: "bg-red-500/10 text-red-500 border-red-500/20" },
+];
+
 const AdminOrders = () => {
+  const { toast } = useToast();
   const [orders, setOrders] = useState<Order[]>([]);
   const [search, setSearch] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
+  const [updatingStatus, setUpdatingStatus] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<string>("all");
 
   useEffect(() => {
     fetchOrders();
@@ -54,7 +74,6 @@ const AdminOrders = () => {
 
   const fetchOrders = async () => {
     try {
-      // Fetch orders
       const { data: ordersData, error: ordersError } = await supabase
         .from("orders")
         .select("*")
@@ -62,12 +81,10 @@ const AdminOrders = () => {
 
       if (ordersError) throw ordersError;
 
-      // Fetch profiles for user info
       const { data: profiles } = await supabase
         .from("profiles")
         .select("id, email, full_name");
 
-      // Fetch order items
       const { data: orderItems } = await supabase
         .from("order_items")
         .select("*");
@@ -99,6 +116,36 @@ const AdminOrders = () => {
     }
   };
 
+  const updateOrderStatus = async (orderId: string, newStatus: string) => {
+    setUpdatingStatus(orderId);
+    try {
+      const { error } = await supabase
+        .from("orders")
+        .update({ status: newStatus })
+        .eq("id", orderId);
+
+      if (error) throw error;
+
+      setOrders(prev => prev.map(order => 
+        order.id === orderId ? { ...order, status: newStatus } : order
+      ));
+
+      toast({
+        title: "Status Updated",
+        description: `Order status changed to ${newStatus}`,
+      });
+    } catch (error: any) {
+      console.error("Error updating order status:", error);
+      toast({
+        title: "Error",
+        description: "Failed to update order status",
+        variant: "destructive",
+      });
+    } finally {
+      setUpdatingStatus(null);
+    }
+  };
+
   const toggleExpand = (orderId: string) => {
     setExpandedOrders(prev => {
       const newSet = new Set(prev);
@@ -112,30 +159,33 @@ const AdminOrders = () => {
   };
 
   const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "completed":
-        return <Badge className="bg-green-500/10 text-green-500 border-green-500/20">Completed</Badge>;
-      case "pending":
-        return <Badge className="bg-yellow-500/10 text-yellow-500 border-yellow-500/20">Pending</Badge>;
-      case "cancelled":
-        return <Badge className="bg-red-500/10 text-red-500 border-red-500/20">Cancelled</Badge>;
-      default:
-        return <Badge variant="outline">{status}</Badge>;
+    const statusConfig = ORDER_STATUSES.find(s => s.value === status);
+    if (statusConfig) {
+      return <Badge className={statusConfig.color}>{statusConfig.label}</Badge>;
     }
+    return <Badge variant="outline">{status}</Badge>;
   };
 
-  const filteredOrders = orders.filter(order =>
-    order.user_email?.toLowerCase().includes(search.toLowerCase()) ||
-    order.user_name?.toLowerCase().includes(search.toLowerCase()) ||
-    order.id.toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredOrders = orders.filter(order => {
+    const matchesSearch = 
+      order.user_email?.toLowerCase().includes(search.toLowerCase()) ||
+      order.user_name?.toLowerCase().includes(search.toLowerCase()) ||
+      order.id.toLowerCase().includes(search.toLowerCase());
+    
+    const matchesStatus = statusFilter === "all" || order.status === statusFilter;
+    
+    return matchesSearch && matchesStatus;
+  });
 
   const totalRevenue = orders.reduce((sum, order) => sum + order.total_amount, 0);
+  const pendingCount = orders.filter(o => o.status === "pending").length;
+  const processingCount = orders.filter(o => o.status === "processing").length;
+  const shippedCount = orders.filter(o => o.status === "shipped").length;
 
   return (
     <AdminLayout title="Orders" description="View and manage all customer orders">
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
         <div className="bg-card rounded-xl border border-border p-4">
           <p className="text-sm text-muted-foreground">Total Orders</p>
           <p className="text-2xl font-bold">{orders.length}</p>
@@ -145,16 +195,22 @@ const AdminOrders = () => {
           <p className="text-2xl font-bold text-primary">Rs. {totalRevenue.toLocaleString()}</p>
         </div>
         <div className="bg-card rounded-xl border border-border p-4">
-          <p className="text-sm text-muted-foreground">Completed Orders</p>
-          <p className="text-2xl font-bold text-green-500">
-            {orders.filter(o => o.status === "completed").length}
-          </p>
+          <p className="text-sm text-muted-foreground">Pending</p>
+          <p className="text-2xl font-bold text-yellow-500">{pendingCount}</p>
+        </div>
+        <div className="bg-card rounded-xl border border-border p-4">
+          <p className="text-sm text-muted-foreground">Processing</p>
+          <p className="text-2xl font-bold text-blue-500">{processingCount}</p>
+        </div>
+        <div className="bg-card rounded-xl border border-border p-4">
+          <p className="text-sm text-muted-foreground">Shipped</p>
+          <p className="text-2xl font-bold text-purple-500">{shippedCount}</p>
         </div>
       </div>
 
-      {/* Search */}
-      <div className="flex items-center gap-4 mb-6">
-        <div className="relative flex-1 max-w-md">
+      {/* Search and Filter */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-6">
+        <div className="relative flex-1 max-w-md w-full">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
             placeholder="Search by customer name, email, or order ID..."
@@ -163,6 +219,19 @@ const AdminOrders = () => {
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="Filter by status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Statuses</SelectItem>
+            {ORDER_STATUSES.map(status => (
+              <SelectItem key={status.value} value={status.value}>
+                {status.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <Badge variant="outline">{filteredOrders.length} orders</Badge>
       </div>
 
@@ -177,6 +246,7 @@ const AdminOrders = () => {
               <TableHead>Items</TableHead>
               <TableHead>Total</TableHead>
               <TableHead>Status</TableHead>
+              <TableHead>Actions</TableHead>
               <TableHead>Date</TableHead>
             </TableRow>
           </TableHeader>
@@ -219,13 +289,35 @@ const AdminOrders = () => {
                       </span>
                     </TableCell>
                     <TableCell>{getStatusBadge(order.status)}</TableCell>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <Select 
+                        value={order.status} 
+                        onValueChange={(value) => updateOrderStatus(order.id, value)}
+                        disabled={updatingStatus === order.id}
+                      >
+                        <SelectTrigger className="w-[130px] h-8">
+                          {updatingStatus === order.id ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <SelectValue />
+                          )}
+                        </SelectTrigger>
+                        <SelectContent>
+                          {ORDER_STATUSES.map(status => (
+                            <SelectItem key={status.value} value={status.value}>
+                              {status.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
                     <TableCell className="text-muted-foreground text-sm">
                       {new Date(order.created_at).toLocaleDateString()}
                     </TableCell>
                   </TableRow>
                   <CollapsibleContent asChild>
                     <TableRow className="bg-secondary/30">
-                      <TableCell colSpan={7} className="p-0">
+                      <TableCell colSpan={8} className="p-0">
                         <div className="p-4 space-y-4">
                           {/* Delivery Details Section */}
                           {(order.delivery_address || order.delivery_phone || order.delivery_city) && (
