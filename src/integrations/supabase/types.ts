@@ -177,6 +177,7 @@ export type Database = {
           is_active: boolean | null
           level1_bonus: number
           level2_bonus: number
+          level3_bonus: number
           name: string
           products_included: Json | null
         }
@@ -189,6 +190,7 @@ export type Database = {
           is_active?: boolean | null
           level1_bonus?: number
           level2_bonus?: number
+          level3_bonus?: number
           name: string
           products_included?: Json | null
         }
@@ -201,6 +203,7 @@ export type Database = {
           is_active?: boolean | null
           level1_bonus?: number
           level2_bonus?: number
+          level3_bonus?: number
           name?: string
           products_included?: Json | null
         }
@@ -553,6 +556,17 @@ export type Database = {
             Returns: Json
           }
         | { Args: { p_items: Json; p_user_id: string }; Returns: Json }
+        | {
+            Args: {
+              p_delivery_address?: string
+              p_delivery_city?: string
+              p_delivery_notes?: string
+              p_delivery_phone?: string
+              p_items: Json
+              p_user_id: string
+            }
+            Returns: Json
+          }
     }
     Enums: {
       app_role: "admin" | "user"
