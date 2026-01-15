@@ -95,27 +95,41 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
 
     console.log("[UPLOAD] Session verified, user:", sessionData.session.user.id);
 
-    const { data, error } = await supabase.storage
-      .from("payment-proofs")
-      .upload(filePath, file, {
-        cacheControl: "3600",
-        upsert: true,
-      });
+    // Create an AbortController for timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
 
-    if (error) {
-      console.error("[UPLOAD] Storage error:", error);
-      throw new Error("Failed to upload file: " + error.message);
+    try {
+      const { data, error } = await supabase.storage
+        .from("payment-proofs")
+        .upload(filePath, file, {
+          cacheControl: "3600",
+          upsert: true,
+        });
+
+      clearTimeout(timeoutId);
+
+      if (error) {
+        console.error("[UPLOAD] Storage error:", error);
+        throw new Error("Failed to upload file: " + error.message);
+      }
+
+      console.log("[UPLOAD] Upload successful:", data.path);
+
+      // Get public URL
+      const { data: urlData } = supabase.storage
+        .from("payment-proofs")
+        .getPublicUrl(filePath);
+
+      console.log("[UPLOAD] Public URL:", urlData.publicUrl);
+      return urlData.publicUrl;
+    } catch (err: any) {
+      clearTimeout(timeoutId);
+      if (err.name === 'AbortError') {
+        throw new Error("Upload timed out. Please check your connection and try again.");
+      }
+      throw err;
     }
-
-    console.log("[UPLOAD] Upload successful:", data.path);
-
-    // Get public URL
-    const { data: urlData } = supabase.storage
-      .from("payment-proofs")
-      .getPublicUrl(filePath);
-
-    console.log("[UPLOAD] Public URL:", urlData.publicUrl);
-    return urlData.publicUrl;
   };
 
   const handleSubmit = async () => {
