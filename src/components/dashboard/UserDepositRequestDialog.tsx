@@ -14,6 +14,10 @@ import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Wallet, Copy, CheckCircle, X, Image as ImageIcon, Upload } from "lucide-react";
+import imageCompression from "browser-image-compression";
+
+// Detect Android device
+const isAndroid = () => /android/i.test(navigator.userAgent);
 
 interface UserDepositRequestDialogProps {
   userId: string;
@@ -77,59 +81,96 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  const uploadToStorage = async (file: File): Promise<string> => {
+  // Compress image for reliable upload
+  const compressImage = async (file: File): Promise<File> => {
+    console.log("[COMPRESS] Original size:", (file.size / 1024 / 1024).toFixed(2), "MB");
+    
+    const options = {
+      maxSizeMB: 0.5, // Compress to max 500KB for mobile reliability
+      maxWidthOrHeight: 1200,
+      useWebWorker: false, // Disable web workers for Android compatibility
+      fileType: file.type as "image/jpeg" | "image/png" | "image/webp",
+    };
+    
+    try {
+      const compressedFile = await imageCompression(file, options);
+      console.log("[COMPRESS] Compressed size:", (compressedFile.size / 1024 / 1024).toFixed(2), "MB");
+      return compressedFile;
+    } catch (err) {
+      console.warn("[COMPRESS] Compression failed, using original:", err);
+      return file;
+    }
+  };
+
+  // Upload via Edge Function (more reliable for Android)
+  const uploadViaEdgeFunction = async (file: File): Promise<string> => {
+    console.log("[EDGE-UPLOAD] Using Edge Function for upload");
+    
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError || !sessionData.session) {
+      throw new Error("Session expired. Please login again.");
+    }
+
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("amount", amount);
+    formData.append("bankReference", bankReference || "");
+
+    const response = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-payment-proof`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${sessionData.session.access_token}`,
+        },
+        body: formData,
+      }
+    );
+
+    const result = await response.json();
+    
+    if (!response.ok || !result.success) {
+      console.error("[EDGE-UPLOAD] Failed:", result);
+      throw new Error(result.error || "Upload failed");
+    }
+
+    console.log("[EDGE-UPLOAD] Success:", result.url);
+    return result.url;
+  };
+
+  // Upload directly to Supabase Storage (for PC/iOS)
+  const uploadDirectToStorage = async (file: File): Promise<string> => {
     const timestamp = Date.now();
     const randomStr = Math.random().toString(36).substring(2, 8);
     const extension = file.name.split(".").pop() || "jpg";
     const filePath = `${userId}/${timestamp}_${randomStr}.${extension}`;
 
-    console.log("[UPLOAD] Starting upload to storage:", filePath);
-    console.log("[UPLOAD] File details:", { name: file.name, type: file.type, size: file.size });
+    console.log("[DIRECT-UPLOAD] Starting upload:", filePath);
 
-    // First verify the session is active
     const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
     if (sessionError || !sessionData.session) {
-      console.error("[UPLOAD] Session error:", sessionError);
       throw new Error("Session expired. Please login again.");
     }
 
-    console.log("[UPLOAD] Session verified, user:", sessionData.session.user.id);
+    const { data, error } = await supabase.storage
+      .from("payment-proofs")
+      .upload(filePath, file, {
+        cacheControl: "3600",
+        upsert: true,
+      });
 
-    // Create an AbortController for timeout
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
-
-    try {
-      const { data, error } = await supabase.storage
-        .from("payment-proofs")
-        .upload(filePath, file, {
-          cacheControl: "3600",
-          upsert: true,
-        });
-
-      clearTimeout(timeoutId);
-
-      if (error) {
-        console.error("[UPLOAD] Storage error:", error);
-        throw new Error("Failed to upload file: " + error.message);
-      }
-
-      console.log("[UPLOAD] Upload successful:", data.path);
-
-      // Get public URL
-      const { data: urlData } = supabase.storage
-        .from("payment-proofs")
-        .getPublicUrl(filePath);
-
-      console.log("[UPLOAD] Public URL:", urlData.publicUrl);
-      return urlData.publicUrl;
-    } catch (err: any) {
-      clearTimeout(timeoutId);
-      if (err.name === 'AbortError') {
-        throw new Error("Upload timed out. Please check your connection and try again.");
-      }
-      throw err;
+    if (error) {
+      console.error("[DIRECT-UPLOAD] Storage error:", error);
+      throw new Error("Failed to upload file: " + error.message);
     }
+
+    console.log("[DIRECT-UPLOAD] Upload successful:", data.path);
+
+    const { data: urlData } = supabase.storage
+      .from("payment-proofs")
+      .getPublicUrl(filePath);
+
+    return urlData.publicUrl;
   };
 
   const handleSubmit = async () => {
@@ -145,28 +186,42 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
     }
 
     console.log("[SUBMIT] Starting deposit request...");
+    console.log("[SUBMIT] Device:", isAndroid() ? "Android" : "Other");
     setIsLoading(true);
-    setUploadProgress("Uploading image...");
+    setUploadProgress("Compressing image...");
 
     try {
-      // Step 1: Upload image to storage
-      const paymentProofUrl = await uploadToStorage(selectedFile);
-      console.log("[SUBMIT] Image uploaded:", paymentProofUrl);
+      // Step 1: Compress image
+      const compressedFile = await compressImage(selectedFile);
+      
+      setUploadProgress("Uploading image...");
 
-      // Step 2: Create deposit request in database
-      setUploadProgress("Saving request...");
-      const { error: insertError } = await supabase
-        .from("deposit_requests")
-        .insert({
-          user_id: userId,
-          amount: depositAmount,
-          bank_reference: bankReference || null,
-          payment_proof_url: paymentProofUrl,
-        });
+      // Step 2: Upload based on device type
+      // Android uses Edge Function for reliability, others use direct storage
+      if (isAndroid()) {
+        // Edge Function handles both upload AND database insert
+        await uploadViaEdgeFunction(compressedFile);
+        console.log("[SUBMIT] Android upload via Edge Function complete");
+      } else {
+        // Direct upload for PC/iOS
+        const paymentProofUrl = await uploadDirectToStorage(compressedFile);
+        console.log("[SUBMIT] Image uploaded:", paymentProofUrl);
 
-      if (insertError) {
-        console.error("[SUBMIT] Insert error:", insertError);
-        throw new Error("Failed to save deposit request");
+        // Create deposit request in database
+        setUploadProgress("Saving request...");
+        const { error: insertError } = await supabase
+          .from("deposit_requests")
+          .insert({
+            user_id: userId,
+            amount: depositAmount,
+            bank_reference: bankReference || null,
+            payment_proof_url: paymentProofUrl,
+          });
+
+        if (insertError) {
+          console.error("[SUBMIT] Insert error:", insertError);
+          throw new Error("Failed to save deposit request");
+        }
       }
 
       console.log("[SUBMIT] Success!");
