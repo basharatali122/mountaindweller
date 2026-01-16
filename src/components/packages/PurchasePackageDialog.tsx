@@ -1,7 +1,8 @@
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, ShoppingCart, Check } from "lucide-react";
-import { useCart } from "@/contexts/CartContext";
 import { useToast } from "@/hooks/use-toast";
+import { PackageOrderDialog } from "./PackageOrderDialog";
 
 interface PurchasePackageDialogProps {
   packageId: string;
@@ -27,11 +28,9 @@ export const PurchasePackageDialog = ({
   variant = "default",
 }: PurchasePackageDialogProps) => {
   const { toast } = useToast();
-  const { addToCart, items } = useCart();
+  const [showOrderDialog, setShowOrderDialog] = useState(false);
 
-  const isInCart = items.some(item => item.product_id === packageId);
-
-  const handleAddToCart = () => {
+  const handleBuyNow = () => {
     if (!isLoggedIn) {
       toast({
         title: "Login required",
@@ -42,17 +41,16 @@ export const PurchasePackageDialog = ({
       return;
     }
 
-    addToCart({
-      product_id: packageId,
-      product_name: `${packageName} Package`,
-      price: investmentAmount,
-      image: undefined,
-    });
+    if (walletBalance < investmentAmount) {
+      toast({
+        title: "Insufficient Balance",
+        description: `You need ${investmentAmount.toLocaleString()} PKR to purchase this package. Your current balance is ${walletBalance.toLocaleString()} PKR.`,
+        variant: "destructive",
+      });
+      return;
+    }
 
-    toast({
-      title: "Added to cart!",
-      description: `${packageName} package has been added to your cart. Proceed to checkout to complete your order.`,
-    });
+    setShowOrderDialog(true);
   };
 
   if (!isLoggedIn) {
@@ -79,36 +77,35 @@ export const PurchasePackageDialog = ({
         size="lg"
         disabled
       >
+        <Check className="mr-2 w-5 h-5" />
         Already Purchased
       </Button>
     );
   }
 
-  if (isInCart) {
-    return (
-      <Button
-        className="w-full bg-green-600 text-white cursor-default"
-        size="lg"
-        disabled
-      >
-        <Check className="mr-2 w-5 h-5" />
-        Added to Cart
-      </Button>
-    );
-  }
-
   return (
-    <Button
-      className={`w-full ${
-        variant === "popular"
-          ? "bg-accent text-accent-foreground hover:bg-accent/90 shadow-gold"
-          : "bg-primary text-primary-foreground hover:bg-primary/90"
-      }`}
-      size="lg"
-      onClick={handleAddToCart}
-    >
-      <ShoppingCart className="mr-2 w-5 h-5" />
-      Add to Cart
-    </Button>
+    <>
+      <Button
+        className={`w-full ${
+          variant === "popular"
+            ? "bg-accent text-accent-foreground hover:bg-accent/90 shadow-gold"
+            : "bg-primary text-primary-foreground hover:bg-primary/90"
+        }`}
+        size="lg"
+        onClick={handleBuyNow}
+      >
+        <ShoppingCart className="mr-2 w-5 h-5" />
+        Buy Now
+      </Button>
+
+      <PackageOrderDialog
+        open={showOrderDialog}
+        onOpenChange={setShowOrderDialog}
+        packageId={packageId}
+        packageName={packageName}
+        packageAmount={investmentAmount}
+        onSuccess={onSuccess}
+      />
+    </>
   );
 };
