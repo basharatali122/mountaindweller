@@ -1,17 +1,7 @@
-import { useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
-import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { ArrowRight, AlertCircle } from "lucide-react";
+import { ArrowRight, ShoppingCart, Check } from "lucide-react";
+import { useCart } from "@/contexts/CartContext";
+import { useToast } from "@/hooks/use-toast";
 
 interface PurchasePackageDialogProps {
   packageId: string;
@@ -37,57 +27,32 @@ export const PurchasePackageDialog = ({
   variant = "default",
 }: PurchasePackageDialogProps) => {
   const { toast } = useToast();
-  const [open, setOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const { addToCart, items } = useCart();
 
-  const canAfford = walletBalance >= investmentAmount;
+  const isInCart = items.some(item => item.product_id === packageId);
 
-  const handlePurchase = async () => {
+  const handleAddToCart = () => {
     if (!isLoggedIn) {
       toast({
         title: "Login required",
         description: "Please login to purchase a package.",
         variant: "destructive",
       });
+      window.location.href = "/auth";
       return;
     }
 
-    setIsLoading(true);
+    addToCart({
+      product_id: packageId,
+      product_name: `${packageName} Package`,
+      price: investmentAmount,
+      image: undefined,
+    });
 
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
-
-      const { data, error } = await supabase.rpc("purchase_package", {
-        p_user_id: user.id,
-        p_package_id: packageId,
-      });
-
-      if (error) throw error;
-
-      const result = data as { success: boolean; error?: string; message?: string };
-
-      if (!result.success) {
-        throw new Error(result.error || "Purchase failed");
-      }
-
-      toast({
-        title: "Package purchased!",
-        description: `You've successfully purchased the ${packageName} package. Your referrer has received their bonus!`,
-      });
-
-      setOpen(false);
-      onSuccess();
-    } catch (error: any) {
-      console.error("Error purchasing package:", error);
-      toast({
-        title: "Purchase failed",
-        description: error.message || "Failed to purchase package. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
-    }
+    toast({
+      title: "Added to cart!",
+      description: `${packageName} package has been added to your cart. Proceed to checkout to complete your order.`,
+    });
   };
 
   if (!isLoggedIn) {
@@ -119,82 +84,31 @@ export const PurchasePackageDialog = ({
     );
   }
 
+  if (isInCart) {
+    return (
+      <Button
+        className="w-full bg-green-600 text-white cursor-default"
+        size="lg"
+        disabled
+      >
+        <Check className="mr-2 w-5 h-5" />
+        Added to Cart
+      </Button>
+    );
+  }
+
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button
-          className={`w-full ${
-            variant === "popular"
-              ? "bg-accent text-accent-foreground hover:bg-accent/90 shadow-gold"
-              : "bg-primary text-primary-foreground hover:bg-primary/90"
-          }`}
-          size="lg"
-        >
-          Get Started
-          <ArrowRight className="ml-2 w-5 h-5" />
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-[425px]">
-        <DialogHeader>
-          <DialogTitle>Confirm Purchase</DialogTitle>
-          <DialogDescription>
-            You are about to purchase the {packageName} package.
-          </DialogDescription>
-        </DialogHeader>
-        
-        <div className="py-4 space-y-4">
-          <div className="bg-secondary/50 rounded-lg p-4 space-y-2">
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Investment:</span>
-              <span className="font-semibold text-foreground">{investmentAmount.toLocaleString()} PKR</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Referrer Bonus (L1):</span>
-              <span className="font-semibold text-accent">
-                {bonusAmount >= 20000 ? '2,000' : bonusAmount >= 6000 ? '1,000' : '500'} PKR
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Referrer Bonus (L2):</span>
-              <span className="font-semibold text-primary">
-                {bonusAmount >= 20000 ? '1,000' : bonusAmount >= 6000 ? '500' : '200'} PKR
-              </span>
-            </div>
-            <div className="border-t border-border pt-2 mt-2">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Your Balance:</span>
-                <span className={`font-semibold ${canAfford ? "text-foreground" : "text-destructive"}`}>
-                  {walletBalance.toLocaleString()} PKR
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {!canAfford && (
-            <div className="flex items-start gap-2 text-destructive text-sm bg-destructive/10 p-3 rounded-lg">
-              <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
-              <span>Insufficient balance. You need {(investmentAmount - walletBalance).toLocaleString()} PKR more.</span>
-            </div>
-          )}
-        </div>
-
-        <DialogFooter>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => setOpen(false)}
-            disabled={isLoading}
-          >
-            Cancel
-          </Button>
-          <Button 
-            onClick={handlePurchase} 
-            disabled={isLoading || !canAfford}
-          >
-            {isLoading ? "Processing..." : "Confirm Purchase"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <Button
+      className={`w-full ${
+        variant === "popular"
+          ? "bg-accent text-accent-foreground hover:bg-accent/90 shadow-gold"
+          : "bg-primary text-primary-foreground hover:bg-primary/90"
+      }`}
+      size="lg"
+      onClick={handleAddToCart}
+    >
+      <ShoppingCart className="mr-2 w-5 h-5" />
+      Add to Cart
+    </Button>
   );
 };
