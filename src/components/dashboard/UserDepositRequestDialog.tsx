@@ -81,20 +81,24 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  // Compress image for reliable upload
+  // Compress image for reliable upload - more aggressive for Android
   const compressImage = async (file: File): Promise<File> => {
-    console.log("[COMPRESS] Original size:", (file.size / 1024 / 1024).toFixed(2), "MB");
+    console.log("[COMPRESS] Original size:", (file.size / 1024).toFixed(2), "KB");
+    
+    const maxSizeMB = isAndroid() ? 0.3 : 0.5; // More aggressive compression on Android
+    const maxDimension = isAndroid() ? 1000 : 1200;
     
     const options = {
-      maxSizeMB: 0.5, // Compress to max 500KB for mobile reliability
-      maxWidthOrHeight: 1200,
-      useWebWorker: false, // Disable web workers for Android compatibility
-      fileType: file.type as "image/jpeg" | "image/png" | "image/webp",
+      maxSizeMB,
+      maxWidthOrHeight: maxDimension,
+      useWebWorker: false, // Disable web workers for mobile compatibility
+      fileType: "image/jpeg" as const, // Force JPEG for better compression
+      initialQuality: 0.8,
     };
     
     try {
       const compressedFile = await imageCompression(file, options);
-      console.log("[COMPRESS] Compressed size:", (compressedFile.size / 1024 / 1024).toFixed(2), "MB");
+      console.log("[COMPRESS] Compressed size:", (compressedFile.size / 1024).toFixed(2), "KB");
       return compressedFile;
     } catch (err) {
       console.warn("[COMPRESS] Compression failed, using original:", err);
@@ -105,6 +109,7 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
   // Upload via Edge Function (more reliable for Android)
   const uploadViaEdgeFunction = async (file: File): Promise<string> => {
     console.log("[EDGE-UPLOAD] Using Edge Function for upload");
+    console.log("[EDGE-UPLOAD] File size:", (file.size / 1024).toFixed(2), "KB");
     
     const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
     if (sessionError || !sessionData.session) {
@@ -116,26 +121,46 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
     formData.append("amount", amount);
     formData.append("bankReference", bankReference || "");
 
-    const response = await fetch(
-      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-payment-proof`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${sessionData.session.access_token}`,
-        },
-        body: formData,
+    // Create abort controller with 60 second timeout for Android
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      console.log("[EDGE-UPLOAD] Request timeout after 60s");
+      controller.abort();
+    }, 60000);
+
+    try {
+      console.log("[EDGE-UPLOAD] Starting fetch request...");
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-payment-proof`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${sessionData.session.access_token}`,
+          },
+          body: formData,
+          signal: controller.signal,
+        }
+      );
+
+      clearTimeout(timeoutId);
+      console.log("[EDGE-UPLOAD] Response status:", response.status);
+
+      const result = await response.json();
+      
+      if (!response.ok || !result.success) {
+        console.error("[EDGE-UPLOAD] Failed:", result);
+        throw new Error(result.error || "Upload failed");
       }
-    );
 
-    const result = await response.json();
-    
-    if (!response.ok || !result.success) {
-      console.error("[EDGE-UPLOAD] Failed:", result);
-      throw new Error(result.error || "Upload failed");
+      console.log("[EDGE-UPLOAD] Success:", result.url);
+      return result.url;
+    } catch (err: any) {
+      clearTimeout(timeoutId);
+      if (err.name === "AbortError") {
+        throw new Error("Upload timed out. Please try with a smaller image.");
+      }
+      throw err;
     }
-
-    console.log("[EDGE-UPLOAD] Success:", result.url);
-    return result.url;
   };
 
   // Upload directly to Supabase Storage (for PC/iOS)
@@ -193,36 +218,14 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
     try {
       // Step 1: Compress image
       const compressedFile = await compressImage(selectedFile);
+      console.log("[SUBMIT] Compressed file ready:", (compressedFile.size / 1024).toFixed(2), "KB");
       
       setUploadProgress("Uploading image...");
 
-      // Step 2: Upload based on device type
-      // Android uses Edge Function for reliability, others use direct storage
-      if (isAndroid()) {
-        // Edge Function handles both upload AND database insert
-        await uploadViaEdgeFunction(compressedFile);
-        console.log("[SUBMIT] Android upload via Edge Function complete");
-      } else {
-        // Direct upload for PC/iOS
-        const paymentProofUrl = await uploadDirectToStorage(compressedFile);
-        console.log("[SUBMIT] Image uploaded:", paymentProofUrl);
-
-        // Create deposit request in database
-        setUploadProgress("Saving request...");
-        const { error: insertError } = await supabase
-          .from("deposit_requests")
-          .insert({
-            user_id: userId,
-            amount: depositAmount,
-            bank_reference: bankReference || null,
-            payment_proof_url: paymentProofUrl,
-          });
-
-        if (insertError) {
-          console.error("[SUBMIT] Insert error:", insertError);
-          throw new Error("Failed to save deposit request");
-        }
-      }
+      // Step 2: Use Edge Function for ALL devices (more reliable)
+      // Edge Function handles both upload AND database insert
+      await uploadViaEdgeFunction(compressedFile);
+      console.log("[SUBMIT] Upload via Edge Function complete");
 
       console.log("[SUBMIT] Success!");
       toast({
