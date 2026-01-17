@@ -106,38 +106,80 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
     }
   };
 
-  // Upload via Edge Function (more reliable for Android)
-  const uploadViaEdgeFunction = async (file: File): Promise<string> => {
-    console.log("[EDGE-UPLOAD] Using Edge Function for upload");
+  // Convert file to base64
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        // Remove data URL prefix (e.g., "data:image/jpeg;base64,")
+        const base64 = result.split(",")[1];
+        resolve(base64);
+      };
+      reader.onerror = () => reject(new Error("Failed to read file"));
+      reader.readAsDataURL(file);
+    });
+  };
+
+  // Upload via Edge Function using JSON/base64 (more reliable for Android)
+  const uploadViaEdgeFunction = async (file: File, retryCount = 0): Promise<string> => {
+    console.log("[EDGE-UPLOAD] Using Edge Function for upload, attempt:", retryCount + 1);
     console.log("[EDGE-UPLOAD] File size:", (file.size / 1024).toFixed(2), "KB");
+    console.log("[EDGE-UPLOAD] Device:", isAndroid() ? "Android" : "Other");
     
     const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
     if (sessionError || !sessionData.session) {
       throw new Error("Session expired. Please login again.");
     }
 
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("amount", amount);
-    formData.append("bankReference", bankReference || "");
-
-    // Create abort controller with 60 second timeout for Android
+    // Create abort controller with timeout
+    const timeoutMs = isAndroid() ? 90000 : 60000; // 90s for Android, 60s for others
     const controller = new AbortController();
     const timeoutId = setTimeout(() => {
-      console.log("[EDGE-UPLOAD] Request timeout after 60s");
+      console.log("[EDGE-UPLOAD] Request timeout after", timeoutMs / 1000, "s");
       controller.abort();
-    }, 60000);
+    }, timeoutMs);
 
     try {
+      let body: FormData | string;
+      let contentType: string | undefined;
+
+      // Use base64 JSON for Android (more reliable), FormData for others
+      if (isAndroid()) {
+        console.log("[EDGE-UPLOAD] Using base64 JSON for Android");
+        const base64 = await fileToBase64(file);
+        body = JSON.stringify({
+          file: base64,
+          fileName: file.name,
+          fileType: file.type || "image/jpeg",
+          amount: amount,
+          bankReference: bankReference || "",
+        });
+        contentType = "application/json";
+      } else {
+        console.log("[EDGE-UPLOAD] Using FormData");
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("amount", amount);
+        formData.append("bankReference", bankReference || "");
+        body = formData;
+        contentType = undefined; // Let browser set it for FormData
+      }
+
       console.log("[EDGE-UPLOAD] Starting fetch request...");
+      const headers: Record<string, string> = {
+        Authorization: `Bearer ${sessionData.session.access_token}`,
+      };
+      if (contentType) {
+        headers["Content-Type"] = contentType;
+      }
+
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-payment-proof`,
         {
           method: "POST",
-          headers: {
-            Authorization: `Bearer ${sessionData.session.access_token}`,
-          },
-          body: formData,
+          headers,
+          body,
           signal: controller.signal,
         }
       );
@@ -156,8 +198,16 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
       return result.url;
     } catch (err: any) {
       clearTimeout(timeoutId);
+      
+      // Retry once on Android for network errors
+      if (isAndroid() && retryCount < 1 && (err.name === "AbortError" || err.message?.includes("network"))) {
+        console.log("[EDGE-UPLOAD] Retrying after error:", err.message);
+        await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
+        return uploadViaEdgeFunction(file, retryCount + 1);
+      }
+      
       if (err.name === "AbortError") {
-        throw new Error("Upload timed out. Please try with a smaller image.");
+        throw new Error("Upload timed out. Please try with a smaller image or check your connection.");
       }
       throw err;
     }
