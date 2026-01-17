@@ -15,6 +15,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Wallet, Copy, CheckCircle, X, Image as ImageIcon, Upload } from "lucide-react";
 import imageCompression from "browser-image-compression";
+import paymentQrCode from "@/assets/payment-qr.jpeg";
 
 // Detect Android device
 const isAndroid = () => /android/i.test(navigator.userAgent);
@@ -25,11 +26,11 @@ interface UserDepositRequestDialogProps {
 }
 
 const BANK_DETAILS = {
-  merchantName: "Mountain Dweller",
-  accountNumber: "03064121334",
-  iban: "PK35JSBL9999903064121334",
-  tillNumber: "946336009",
-  bank: "JS Bank",
+  merchantName: "Mountain Dweller Traders",
+  accountNumber: "03006573733",
+  iban: "PK82JCMA0201923006573733",
+  tillNumber: "982222095",
+  bank: "JazzCash / Raast",
 };
 
 export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositRequestDialogProps) {
@@ -316,18 +317,33 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
         </DialogHeader>
 
         <div className="space-y-6 py-4">
+          {/* QR Code */}
+          <div className="bg-amber-50 dark:bg-amber-950/30 rounded-xl p-4 space-y-3">
+            <h3 className="font-semibold text-foreground text-center">Scan QR to Pay</h3>
+            <div className="flex justify-center">
+              <img 
+                src={paymentQrCode} 
+                alt="JazzCash/Raast QR Code" 
+                className="w-48 h-auto rounded-lg border-2 border-amber-200"
+              />
+            </div>
+            <p className="text-xs text-center text-muted-foreground">
+              Dial <strong>*786*10#</strong> and enter <strong>TILL ID: {BANK_DETAILS.tillNumber}</strong> to pay via JazzCash
+            </p>
+          </div>
+
           {/* Bank Details */}
           <div className="bg-muted/50 rounded-xl p-4 space-y-3">
-            <h3 className="font-semibold text-foreground">Bank Transfer Details</h3>
+            <h3 className="font-semibold text-foreground">Payment Details</h3>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between items-center">
-                <span className="text-muted-foreground">Bank:</span>
+                <span className="text-muted-foreground">Payment Method:</span>
                 <span className="font-medium">{BANK_DETAILS.bank}</span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-muted-foreground">Account Title:</span>
+                <span className="text-muted-foreground">Account Name:</span>
                 <div className="flex items-center gap-2">
-                  <span className="font-medium">{BANK_DETAILS.merchantName}</span>
+                  <span className="font-medium text-xs">{BANK_DETAILS.merchantName}</span>
                   <Button
                     size="icon"
                     variant="ghost"
@@ -343,7 +359,7 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
                 </div>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-muted-foreground">Account #:</span>
+                <span className="text-muted-foreground">Number:</span>
                 <div className="flex items-center gap-2">
                   <span className="font-mono font-medium">{BANK_DETAILS.accountNumber}</span>
                   <Button
@@ -379,7 +395,7 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
                 </div>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-muted-foreground">Till #:</span>
+                <span className="text-muted-foreground">Till ID:</span>
                 <div className="flex items-center gap-2">
                   <span className="font-mono font-medium">{BANK_DETAILS.tillNumber}</span>
                   <Button
