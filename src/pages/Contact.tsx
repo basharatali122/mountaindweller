@@ -282,7 +282,7 @@ const Contact = () => {
                     </div>
                     <div>
                       <h3 className="font-semibold text-foreground mb-1">Location</h3>
-                      <p className="text-muted-foreground">Pakistan</p>
+                      <p className="text-muted-foreground">Kasur, Pakistan</p>
                     </div>
                   </div>
 
@@ -292,7 +292,7 @@ const Contact = () => {
                     </div>
                     <div>
                       <h3 className="font-semibold text-foreground mb-1">Phone</h3>
-                      <p className="text-muted-foreground">Contact via website</p>
+                      <a href="tel:03304260609" className="text-muted-foreground hover:text-primary transition-colors">0330-4260609</a>
                     </div>
                   </div>
 
@@ -303,10 +303,10 @@ const Contact = () => {
                     <div>
                       <h3 className="font-semibold text-foreground mb-1">Email</h3>
                       <a 
-                        href="mailto:officialmountaindweller@gmail.com" 
+                        href="mailto:officialmountaidweller@gmail.com" 
                         className="text-muted-foreground hover:text-primary transition-colors"
                       >
-                        officialmountaindweller@gmail.com
+                        officialmountaidweller@gmail.com
                       </a>
                     </div>
                   </div>
