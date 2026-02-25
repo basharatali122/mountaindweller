@@ -110,22 +110,25 @@ export function Footer() {
               <li className="flex items-start gap-3">
                 <MapPin className="w-5 h-5 text-accent shrink-0 mt-0.5" />
                 <span className="text-mountain-foreground/70 text-sm">
-                  Pakistan
+                  Kasur, Pakistan
                 </span>
               </li>
               <li className="flex items-center gap-3">
                 <Phone className="w-5 h-5 text-accent shrink-0" />
-                <span className="text-mountain-foreground/70 text-sm">
-                  Contact via website
-                </span>
+                <a 
+                  href="tel:03304260609" 
+                  className="text-mountain-foreground/70 hover:text-accent transition-colors text-sm"
+                >
+                  0330-4260609
+                </a>
               </li>
               <li className="flex items-center gap-3">
                 <Mail className="w-5 h-5 text-accent shrink-0" />
                 <a 
-                  href="mailto:officialmountaindweller@gmail.com" 
+                  href="mailto:officialmountaidweller@gmail.com" 
                   className="text-mountain-foreground/70 hover:text-accent transition-colors text-sm"
                 >
-                  officialmountaindweller@gmail.com
+                  officialmountaidweller@gmail.com
                 </a>
               </li>
             </ul>
