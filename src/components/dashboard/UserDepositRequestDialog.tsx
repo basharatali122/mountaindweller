@@ -82,133 +82,94 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  // Compress image for reliable upload - more aggressive for Android
+  // Hard timeout wrapper
+  const withTimeout = <T,>(p: Promise<T>, ms: number, label: string): Promise<T> => {
+    return new Promise((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error(`${label} timed out after ${ms / 1000}s`)), ms);
+      p.then((v) => { clearTimeout(t); resolve(v); }).catch((e) => { clearTimeout(t); reject(e); });
+    });
+  };
+
+  // Compress image - skip if already small, hard 15s timeout
   const compressImage = async (file: File): Promise<File> => {
-    console.log("[COMPRESS] Original size:", (file.size / 1024).toFixed(2), "KB");
-    
-    const maxSizeMB = isAndroid() ? 0.3 : 0.5; // More aggressive compression on Android
-    const maxDimension = isAndroid() ? 1000 : 1200;
-    
+    console.log("[COMPRESS] Original:", (file.size / 1024).toFixed(2), "KB");
+
+    // Skip compression for small files - critical on Android where library can hang
+    if (file.size < 800 * 1024) {
+      console.log("[COMPRESS] Skipped - file already small");
+      return file;
+    }
+
     const options = {
-      maxSizeMB,
-      maxWidthOrHeight: maxDimension,
-      useWebWorker: false, // Disable web workers for mobile compatibility
-      fileType: "image/jpeg" as const, // Force JPEG for better compression
-      initialQuality: 0.8,
+      maxSizeMB: isAndroid() ? 0.5 : 0.8,
+      maxWidthOrHeight: 1400,
+      useWebWorker: false,
+      fileType: "image/jpeg" as const,
+      initialQuality: 0.75,
     };
-    
+
     try {
-      const compressedFile = await imageCompression(file, options);
-      console.log("[COMPRESS] Compressed size:", (compressedFile.size / 1024).toFixed(2), "KB");
-      return compressedFile;
+      const compressed = await withTimeout(imageCompression(file, options), 15000, "Compression");
+      console.log("[COMPRESS] Compressed:", (compressed.size / 1024).toFixed(2), "KB");
+      return compressed;
     } catch (err) {
-      console.warn("[COMPRESS] Compression failed, using original:", err);
+      console.warn("[COMPRESS] Failed, using original:", err);
       return file;
     }
   };
 
-  // Convert file to base64
-  const fileToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const result = reader.result as string;
-        // Remove data URL prefix (e.g., "data:image/jpeg;base64,")
-        const base64 = result.split(",")[1];
-        resolve(base64);
-      };
-      reader.onerror = () => reject(new Error("Failed to read file"));
-      reader.readAsDataURL(file);
-    });
-  };
-
-  // Upload via Edge Function using JSON/base64 (more reliable for Android)
+  // Upload via Edge Function using FormData (works reliably across Android/iOS/PC)
   const uploadViaEdgeFunction = async (file: File, retryCount = 0): Promise<string> => {
-    console.log("[EDGE-UPLOAD] Using Edge Function for upload, attempt:", retryCount + 1);
-    console.log("[EDGE-UPLOAD] File size:", (file.size / 1024).toFixed(2), "KB");
-    console.log("[EDGE-UPLOAD] Device:", isAndroid() ? "Android" : "Other");
-    
+    console.log("[UPLOAD] Attempt:", retryCount + 1, "size:", (file.size / 1024).toFixed(2), "KB", "Android:", isAndroid());
+
     const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
     if (sessionError || !sessionData.session) {
       throw new Error("Session expired. Please login again.");
     }
 
-    // Create abort controller with timeout
-    const timeoutMs = isAndroid() ? 90000 : 60000; // 90s for Android, 60s for others
+    const timeoutMs = isAndroid() ? 120000 : 60000;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => {
-      console.log("[EDGE-UPLOAD] Request timeout after", timeoutMs / 1000, "s");
+      console.log("[UPLOAD] Aborting after", timeoutMs / 1000, "s");
       controller.abort();
     }, timeoutMs);
 
     try {
-      let body: FormData | string;
-      let contentType: string | undefined;
-
-      // Use base64 JSON for Android (more reliable), FormData for others
-      if (isAndroid()) {
-        console.log("[EDGE-UPLOAD] Using base64 JSON for Android");
-        const base64 = await fileToBase64(file);
-        body = JSON.stringify({
-          file: base64,
-          fileName: file.name,
-          fileType: file.type || "image/jpeg",
-          amount: amount,
-          bankReference: bankReference || "",
-        });
-        contentType = "application/json";
-      } else {
-        console.log("[EDGE-UPLOAD] Using FormData");
-        const formData = new FormData();
-        formData.append("file", file);
-        formData.append("amount", amount);
-        formData.append("bankReference", bankReference || "");
-        body = formData;
-        contentType = undefined; // Let browser set it for FormData
-      }
-
-      console.log("[EDGE-UPLOAD] Starting fetch request...");
-      const headers: Record<string, string> = {
-        Authorization: `Bearer ${sessionData.session.access_token}`,
-      };
-      if (contentType) {
-        headers["Content-Type"] = contentType;
-      }
+      const formData = new FormData();
+      formData.append("file", file, file.name || "proof.jpg");
+      formData.append("amount", amount);
+      formData.append("bankReference", bankReference || "");
 
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-payment-proof`,
         {
           method: "POST",
-          headers,
-          body,
+          headers: { Authorization: `Bearer ${sessionData.session.access_token}` },
+          body: formData,
           signal: controller.signal,
         }
       );
 
       clearTimeout(timeoutId);
-      console.log("[EDGE-UPLOAD] Response status:", response.status);
+      console.log("[UPLOAD] Status:", response.status);
 
       const result = await response.json();
-      
       if (!response.ok || !result.success) {
-        console.error("[EDGE-UPLOAD] Failed:", result);
         throw new Error(result.error || "Upload failed");
       }
-
-      console.log("[EDGE-UPLOAD] Success:", result.url);
+      console.log("[UPLOAD] Success");
       return result.url;
     } catch (err: any) {
       clearTimeout(timeoutId);
-      
-      // Retry once on Android for network errors
-      if (isAndroid() && retryCount < 1 && (err.name === "AbortError" || err.message?.includes("network"))) {
-        console.log("[EDGE-UPLOAD] Retrying after error:", err.message);
-        await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
+
+      if (retryCount < 2 && (err.name === "AbortError" || err.message?.includes("network") || err.message?.includes("fetch"))) {
+        console.log("[UPLOAD] Retry after:", err.message);
+        await new Promise((r) => setTimeout(r, 2000));
         return uploadViaEdgeFunction(file, retryCount + 1);
       }
-      
+
       if (err.name === "AbortError") {
-        throw new Error("Upload timed out. Please try with a smaller image or check your connection.");
+        throw new Error("Upload timed out. Try a smaller image or better network.");
       }
       throw err;
     }

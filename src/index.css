@@ -1,202 +1,247 @@
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700;800&family=Manrope:wght@300;400;500;600;700;800&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Mountain Dweller Design System - Earthy, Professional, Premium */
+/* Mountain Dweller — Modern fintech-inspired design system */
 
 @layer base {
   :root {
-    /* Earthy Mountain Palette */
-    --background: 45 20% 97%;
-    --foreground: 25 30% 15%;
+    --background: 0 0% 100%;
+    --foreground: 240 20% 10%;
 
     --card: 0 0% 100%;
-    --card-foreground: 25 30% 15%;
+    --card-foreground: 240 20% 10%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 25 30% 15%;
+    --popover-foreground: 240 20% 10%;
 
-    /* Forest Green Primary */
-    --primary: 145 35% 28%;
-    --primary-foreground: 45 20% 97%;
+    /* Electric Indigo Primary */
+    --primary: 239 84% 60%;
+    --primary-foreground: 0 0% 100%;
+    --primary-glow: 250 100% 75%;
 
-    /* Warm Stone Secondary */
-    --secondary: 35 25% 90%;
-    --secondary-foreground: 25 30% 15%;
+    --secondary: 240 20% 96%;
+    --secondary-foreground: 240 20% 10%;
 
-    /* Muted Earth Tones */
-    --muted: 40 15% 92%;
-    --muted-foreground: 25 15% 45%;
+    --muted: 240 15% 96%;
+    --muted-foreground: 240 10% 45%;
 
-    /* Lemon/Gold Accent */
-    --accent: 48 90% 50%;
-    --accent-foreground: 25 30% 15%;
+    --accent: 280 90% 65%;
+    --accent-foreground: 0 0% 100%;
 
-    /* Mountain Brown */
-    --mountain: 25 35% 25%;
-    --mountain-foreground: 45 20% 97%;
+    --mountain: 240 30% 12%;
+    --mountain-foreground: 0 0% 100%;
 
-    /* Sky Blue */
-    --sky: 200 65% 45%;
+    --sky: 199 89% 55%;
     --sky-foreground: 0 0% 100%;
 
-    /* Gold Highlights */
-    --gold: 42 85% 55%;
-    --gold-foreground: 25 30% 15%;
+    --gold: 45 100% 60%;
+    --gold-foreground: 240 20% 10%;
 
-    --destructive: 0 72% 51%;
+    --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 35 20% 85%;
-    --input: 35 20% 85%;
-    --ring: 145 35% 28%;
+    --border: 240 15% 92%;
+    --input: 240 15% 92%;
+    --ring: 239 84% 60%;
 
-    --radius: 0.75rem;
+    --radius: 1rem;
 
     /* Gradients */
-    --gradient-hero: linear-gradient(135deg, hsl(145 35% 28%) 0%, hsl(180 30% 25%) 50%, hsl(200 40% 30%) 100%);
-    --gradient-gold: linear-gradient(135deg, hsl(48 90% 50%) 0%, hsl(42 85% 55%) 100%);
-    --gradient-earth: linear-gradient(180deg, hsl(35 25% 90%) 0%, hsl(40 15% 92%) 100%);
+    --gradient-hero: radial-gradient(ellipse at top, hsl(250 100% 75% / 0.18), transparent 60%),
+                     radial-gradient(ellipse at bottom right, hsl(280 90% 65% / 0.15), transparent 60%),
+                     linear-gradient(180deg, hsl(0 0% 100%) 0%, hsl(240 30% 98%) 100%);
+    --gradient-primary: linear-gradient(135deg, hsl(239 84% 60%) 0%, hsl(280 90% 65%) 50%, hsl(199 89% 55%) 100%);
+    --gradient-gold: linear-gradient(135deg, hsl(45 100% 60%) 0%, hsl(30 100% 55%) 100%);
+    --gradient-aurora: conic-gradient(from 90deg at 50% 50%, hsl(239 84% 60%), hsl(280 90% 65%), hsl(199 89% 55%), hsl(239 84% 60%));
+    --gradient-mesh: radial-gradient(at 27% 37%, hsl(239 84% 60% / 0.25) 0px, transparent 50%),
+                     radial-gradient(at 97% 21%, hsl(280 90% 65% / 0.2) 0px, transparent 50%),
+                     radial-gradient(at 52% 99%, hsl(199 89% 55% / 0.2) 0px, transparent 50%);
 
     /* Shadows */
-    --shadow-sm: 0 2px 8px -2px hsl(25 30% 15% / 0.08);
-    --shadow-md: 0 8px 24px -4px hsl(25 30% 15% / 0.12);
-    --shadow-lg: 0 20px 40px -8px hsl(25 30% 15% / 0.16);
-    --shadow-gold: 0 8px 24px -4px hsl(48 90% 50% / 0.35);
+    --shadow-sm: 0 2px 8px -2px hsl(240 30% 20% / 0.06);
+    --shadow-md: 0 12px 32px -8px hsl(240 30% 20% / 0.12);
+    --shadow-lg: 0 30px 60px -15px hsl(240 30% 20% / 0.18);
+    --shadow-glow: 0 0 60px hsl(239 84% 60% / 0.35);
+    --shadow-gold: 0 12px 32px -8px hsl(45 100% 60% / 0.45);
 
-    --sidebar-background: 0 0% 98%;
-    --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 145 35% 28%;
-    --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 240 4.8% 95.9%;
-    --sidebar-accent-foreground: 240 5.9% 10%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 145 35% 28%;
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 240 20% 10%;
+    --sidebar-primary: 239 84% 60%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 20% 96%;
+    --sidebar-accent-foreground: 240 20% 10%;
+    --sidebar-border: 240 15% 92%;
+    --sidebar-ring: 239 84% 60%;
   }
 
   .dark {
-    --background: 25 25% 8%;
-    --foreground: 45 20% 95%;
+    --background: 240 30% 5%;
+    --foreground: 240 10% 96%;
 
-    --card: 25 20% 12%;
-    --card-foreground: 45 20% 95%;
+    --card: 240 25% 8%;
+    --card-foreground: 240 10% 96%;
 
-    --popover: 25 20% 12%;
-    --popover-foreground: 45 20% 95%;
+    --popover: 240 25% 8%;
+    --popover-foreground: 240 10% 96%;
 
-    --primary: 145 40% 45%;
-    --primary-foreground: 25 25% 8%;
+    --primary: 250 100% 75%;
+    --primary-foreground: 240 30% 5%;
+    --primary-glow: 280 90% 70%;
 
-    --secondary: 25 15% 18%;
-    --secondary-foreground: 45 20% 95%;
+    --secondary: 240 20% 12%;
+    --secondary-foreground: 240 10% 96%;
 
-    --muted: 25 15% 18%;
-    --muted-foreground: 40 10% 60%;
+    --muted: 240 20% 12%;
+    --muted-foreground: 240 10% 65%;
 
-    --accent: 48 85% 55%;
-    --accent-foreground: 25 25% 8%;
+    --accent: 280 90% 70%;
+    --accent-foreground: 240 30% 5%;
 
-    --mountain: 25 30% 70%;
-    --mountain-foreground: 25 25% 8%;
+    --mountain: 240 30% 3%;
+    --mountain-foreground: 240 10% 96%;
 
-    --sky: 200 60% 55%;
-    --sky-foreground: 25 25% 8%;
+    --sky: 199 89% 60%;
+    --sky-foreground: 240 30% 5%;
 
-    --gold: 42 80% 60%;
-    --gold-foreground: 25 25% 8%;
+    --gold: 45 100% 65%;
+    --gold-foreground: 240 30% 5%;
 
-    --destructive: 0 65% 45%;
+    --destructive: 0 70% 55%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 25 15% 22%;
-    --input: 25 15% 22%;
-    --ring: 145 40% 45%;
+    --border: 240 20% 16%;
+    --input: 240 20% 16%;
+    --ring: 250 100% 75%;
 
-    --sidebar-background: 25 25% 8%;
-    --sidebar-foreground: 45 20% 95%;
-    --sidebar-primary: 145 40% 45%;
-    --sidebar-primary-foreground: 25 25% 8%;
-    --sidebar-accent: 25 15% 18%;
-    --sidebar-accent-foreground: 45 20% 95%;
-    --sidebar-border: 25 15% 22%;
-    --sidebar-ring: 145 40% 45%;
+    --gradient-hero: radial-gradient(ellipse at top, hsl(250 100% 75% / 0.22), transparent 60%),
+                     radial-gradient(ellipse at bottom right, hsl(280 90% 65% / 0.2), transparent 60%),
+                     linear-gradient(180deg, hsl(240 30% 5%) 0%, hsl(240 30% 7%) 100%);
+    --gradient-mesh: radial-gradient(at 27% 37%, hsl(239 84% 60% / 0.35) 0px, transparent 50%),
+                     radial-gradient(at 97% 21%, hsl(280 90% 65% / 0.3) 0px, transparent 50%),
+                     radial-gradient(at 52% 99%, hsl(199 89% 55% / 0.3) 0px, transparent 50%);
+
+    --shadow-glow: 0 0 80px hsl(250 100% 75% / 0.4);
+
+    --sidebar-background: 240 30% 5%;
+    --sidebar-foreground: 240 10% 96%;
+    --sidebar-primary: 250 100% 75%;
+    --sidebar-primary-foreground: 240 30% 5%;
+    --sidebar-accent: 240 20% 12%;
+    --sidebar-accent-foreground: 240 10% 96%;
+    --sidebar-border: 240 20% 16%;
+    --sidebar-ring: 250 100% 75%;
   }
 }
 
 @layer base {
-  * {
-    @apply border-border;
-  }
-
+  * { @apply border-border; }
+  html { scroll-behavior: smooth; }
   body {
     @apply bg-background text-foreground font-sans antialiased;
+    font-feature-settings: "cv11", "ss01", "ss03";
   }
-
-  h1, h2, h3, h4, h5, h6 {
-    @apply font-display;
-  }
+  h1, h2, h3, h4, h5, h6 { @apply font-display tracking-tight; }
 }
 
 @layer utilities {
+  .text-gradient {
+    @apply bg-clip-text text-transparent;
+    background-image: var(--gradient-primary);
+  }
   .text-gradient-gold {
     @apply bg-clip-text text-transparent;
     background-image: var(--gradient-gold);
   }
+  .bg-gradient-hero { background-image: var(--gradient-hero); }
+  .bg-gradient-primary { background-image: var(--gradient-primary); }
+  .bg-gradient-mesh { background-image: var(--gradient-mesh); }
+  .bg-gradient-aurora { background-image: var(--gradient-aurora); }
+  .shadow-glow { box-shadow: var(--shadow-glow); }
+  .shadow-gold { box-shadow: var(--shadow-gold); }
+  .shadow-elegant { box-shadow: var(--shadow-md); }
+  .shadow-soft { box-shadow: var(--shadow-sm); }
+  .shadow-deep { box-shadow: var(--shadow-lg); }
 
-  .bg-gradient-hero {
-    background-image: var(--gradient-hero);
+  .glass {
+    @apply backdrop-blur-xl bg-card/60 border border-border/50;
+  }
+  .glass-strong {
+    @apply backdrop-blur-2xl bg-background/80 border border-border/60;
   }
 
-  .bg-gradient-earth {
-    background-image: var(--gradient-earth);
-  }
+  .perspective-1000 { perspective: 1000px; }
+  .preserve-3d { transform-style: preserve-3d; }
 
-  .shadow-gold {
-    box-shadow: var(--shadow-gold);
+  .animate-float { animation: float 6s ease-in-out infinite; }
+  .animate-float-slow { animation: float 10s ease-in-out infinite; }
+  .animate-spin-slow { animation: spin 20s linear infinite; }
+  .animate-shimmer {
+    background: linear-gradient(90deg, transparent, hsl(var(--primary) / 0.15), transparent);
+    background-size: 200% 100%;
+    animation: shimmer 2.5s linear infinite;
   }
-
-  .shadow-elegant {
-    box-shadow: var(--shadow-md);
+  .animate-gradient {
+    background-size: 200% 200%;
+    animation: gradient 8s ease infinite;
   }
-
-  .animate-float {
-    animation: float 6s ease-in-out infinite;
+  .animate-blob { animation: blob 12s ease-in-out infinite; }
+  .animate-blob-delay { animation: blob 14s ease-in-out infinite; animation-delay: -4s; }
+  .animate-aurora {
+    animation: aurora 20s linear infinite;
   }
 
   @keyframes float {
-    0%, 100% { transform: translateY(0px); }
-    50% { transform: translateY(-20px); }
+    0%, 100% { transform: translateY(0) rotate(0); }
+    50% { transform: translateY(-24px) rotate(2deg); }
+  }
+  @keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+  @keyframes gradient {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+  }
+  @keyframes blob {
+    0%, 100% { transform: translate(0,0) scale(1); }
+    33% { transform: translate(40px,-30px) scale(1.1); }
+    66% { transform: translate(-30px,40px) scale(0.95); }
+  }
+  @keyframes aurora {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
   }
 
-  .animate-fade-up {
-    animation: fadeUp 0.8s ease-out forwards;
+  .hover-lift {
+    @apply transition-all duration-500 hover:-translate-y-2 hover:shadow-deep;
+  }
+  .card-3d {
+    @apply transition-transform duration-500 ease-out;
+    transform-style: preserve-3d;
+  }
+  .card-3d:hover {
+    transform: perspective(1000px) rotateX(4deg) rotateY(-4deg) translateY(-8px);
   }
 
-  @keyframes fadeUp {
-    from {
-      opacity: 0;
-      transform: translateY(30px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
+  .grid-bg {
+    background-image:
+      linear-gradient(hsl(var(--border) / 0.6) 1px, transparent 1px),
+      linear-gradient(90deg, hsl(var(--border) / 0.6) 1px, transparent 1px);
+    background-size: 48px 48px;
+    mask-image: radial-gradient(ellipse at center, black 40%, transparent 75%);
   }
-
-  .animate-scale-in {
-    animation: scaleIn 0.5s ease-out forwards;
+  .noise {
+    position: relative;
   }
-
-  @keyframes scaleIn {
-    from {
-      opacity: 0;
-      transform: scale(0.9);
-    }
-    to {
-      opacity: 1;
-      transform: scale(1);
-    }
+  .noise::after {
+    content: "";
+    position: absolute; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.6'/%3E%3C/svg%3E");
+    opacity: 0.04;
+    pointer-events: none;
+    mix-blend-mode: overlay;
   }
 }
