@@ -75,7 +75,7 @@ const Index = () => {
               transition={{ duration: 1, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
               className="font-display text-5xl md:text-7xl lg:text-8xl font-bold tracking-tight mb-6 leading-[1.02]"
             >
-              <span className="block">Build your future.</span>
+              <span className="block text-white">Build your future.</span>
               <span className="block text-gradient animate-gradient bg-gradient-primary">Beautifully.</span>
             </motion.h1>
 
