@@ -3,11 +3,13 @@ import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, ShoppingBag, Users, TrendingUp, Award, Shield, Sparkles, Package, ArrowUpRight, Zap, Globe, Star, CheckCircle2 } from "lucide-react";
 import { motion, useScroll, useTransform, useSpring } from "framer-motion";
-import { useRef } from "react";
+import { lazy, Suspense, useRef } from "react";
 import { FadeIn, Stagger, StaggerItem, Tilt3D, AuroraBackground, Parallax } from "@/components/anim/Primitives";
-import { Hero3D } from "@/components/anim/Hero3D";
 import { Marquee } from "@/components/anim/Marquee";
 import { Counter } from "@/components/anim/Counter";
+import { useIsMobile } from "@/hooks/use-mobile";
+
+const Hero3D = lazy(() => import("@/components/anim/Hero3D").then(m => ({ default: m.Hero3D })));
 
 const stats = [
   { value: 55, suffix: "%", label: "Direct Bonus" },
@@ -33,10 +35,11 @@ const steps = [
 
 const Index = () => {
   const heroRef = useRef<HTMLElement>(null);
+  const isMobile = useIsMobile();
   const { scrollYProgress } = useScroll({ target: heroRef, offset: ["start start", "end start"] });
-  const heroY = useSpring(useTransform(scrollYProgress, [0, 1], [0, 200]), { stiffness: 80, damping: 20 });
+  const heroY = useSpring(useTransform(scrollYProgress, [0, 1], [0, isMobile ? 80 : 200]), { stiffness: 80, damping: 20 });
   const heroOpacity = useTransform(scrollYProgress, [0, 0.8], [1, 0]);
-  const heroScale = useTransform(scrollYProgress, [0, 1], [1, 0.85]);
+  const heroScale = useTransform(scrollYProgress, [0, 1], [1, isMobile ? 0.95 : 0.85]);
 
   return (
     <Layout>
