@@ -50,7 +50,9 @@ const Index = () => {
 
         {/* 3D Canvas as ambient background */}
         <motion.div style={{ y: heroY, opacity: heroOpacity, scale: heroScale }} className="absolute inset-0 z-0">
-          <Hero3D />
+          <Suspense fallback={null}>
+            <Hero3D />
+          </Suspense>
         </motion.div>
 
         <motion.div style={{ y: heroY, opacity: heroOpacity }} className="container mx-auto px-4 relative z-10 pointer-events-none">
