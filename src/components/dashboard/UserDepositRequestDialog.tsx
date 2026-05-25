@@ -363,14 +363,14 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
           <div className="bg-amber-50 dark:bg-amber-950/30 rounded-xl p-4 space-y-3">
             <h3 className="font-semibold text-foreground text-center">Scan QR to Pay</h3>
             <div className="flex justify-center">
-              <img 
-                src={paymentQrCode} 
-                alt="JazzCash/Raast QR Code" 
-                className="w-48 h-auto rounded-lg border-2 border-amber-200"
+              <img
+                src={paymentQrCode}
+                alt="Bank Alfalah QR Code"
+                className="w-48 h-auto rounded-lg border-2 border-amber-200 bg-white"
               />
             </div>
             <p className="text-xs text-center text-muted-foreground">
-              Dial <strong>*786*10#</strong> and enter <strong>TILL ID: {BANK_DETAILS.tillNumber}</strong> to pay via JazzCash
+              Scan with any banking app to pay <strong>{BANK_DETAILS.merchantName}</strong>
             </p>
           </div>
 
@@ -379,11 +379,11 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
             <h3 className="font-semibold text-foreground">Payment Details</h3>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between items-center">
-                <span className="text-muted-foreground">Payment Method:</span>
+                <span className="text-muted-foreground">Bank Name:</span>
                 <span className="font-medium">{BANK_DETAILS.bank}</span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-muted-foreground">Account Name:</span>
+                <span className="text-muted-foreground">Account Title:</span>
                 <div className="flex items-center gap-2">
                   <span className="font-medium text-xs">{BANK_DETAILS.merchantName}</span>
                   <Button
@@ -401,7 +401,7 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
                 </div>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-muted-foreground">Number:</span>
+                <span className="text-muted-foreground">Account Number:</span>
                 <div className="flex items-center gap-2">
                   <span className="font-mono font-medium">{BANK_DETAILS.accountNumber}</span>
                   <Button
@@ -437,16 +437,16 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
                 </div>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-muted-foreground">Till ID:</span>
+                <span className="text-muted-foreground">Swift Code:</span>
                 <div className="flex items-center gap-2">
-                  <span className="font-mono font-medium">{BANK_DETAILS.tillNumber}</span>
+                  <span className="font-mono font-medium">{BANK_DETAILS.swiftCode}</span>
                   <Button
                     size="icon"
                     variant="ghost"
                     className="h-6 w-6"
-                    onClick={() => copyToClipboard(BANK_DETAILS.tillNumber, "till")}
+                    onClick={() => copyToClipboard(BANK_DETAILS.swiftCode, "swift")}
                   >
-                    {copiedField === "till" ? (
+                    {copiedField === "swift" ? (
                       <CheckCircle className="h-3 w-3 text-green-500" />
                     ) : (
                       <Copy className="h-3 w-3" />
@@ -454,8 +454,17 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
                   </Button>
                 </div>
               </div>
+              <div className="flex justify-between items-center">
+                <span className="text-muted-foreground">Branch Name:</span>
+                <span className="font-medium text-xs">{BANK_DETAILS.branchName}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-muted-foreground">Branch Code:</span>
+                <span className="font-mono font-medium">{BANK_DETAILS.branchCode}</span>
+              </div>
             </div>
           </div>
+
 
           {/* Amount Input */}
           <div className="space-y-2">
