@@ -17,8 +17,18 @@ import { Loader2, Wallet, Copy, CheckCircle, X, Image as ImageIcon, Upload } fro
 import imageCompression from "browser-image-compression";
 import paymentQrCode from "@/assets/payment-qr.jpeg";
 
-// Detect Android device
+// Detect mobile/legacy browsers where multipart uploads can hang
 const isAndroid = () => /android/i.test(navigator.userAgent);
+const isLegacyMobile = () => {
+  const ua = navigator.userAgent;
+  const androidVersion = ua.match(/Android\s([0-9.]+)/i)?.[1];
+  const iosVersion = ua.match(/OS\s([0-9_]+)/i)?.[1]?.replace(/_/g, ".");
+  const oldAndroid = androidVersion ? parseFloat(androidVersion) < 10 : false;
+  const oldIos = iosVersion ? parseFloat(iosVersion) < 14 : false;
+  return oldAndroid || oldIos || (isAndroid() && !window.AbortController);
+};
+
+const getImageType = (file: File) => file.type || (file.name.toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg");
 
 interface UserDepositRequestDialogProps {
   userId: string;
@@ -57,7 +67,7 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
 
     console.log("[FILE] Selected:", file.name, file.type, (file.size / 1024 / 1024).toFixed(2), "MB");
 
-    if (!file.type.startsWith("image/")) {
+    if (file.type && !file.type.startsWith("image/")) {
       toast({ title: "Invalid file", description: "Please select an image", variant: "destructive" });
       return;
     }
@@ -100,12 +110,13 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
       return file;
     }
 
+    const legacyMobile = isLegacyMobile();
     const options = {
-      maxSizeMB: isAndroid() ? 0.5 : 0.8,
-      maxWidthOrHeight: 1400,
+      maxSizeMB: legacyMobile ? 0.3 : isAndroid() ? 0.5 : 0.8,
+      maxWidthOrHeight: legacyMobile ? 1000 : 1400,
       useWebWorker: false,
       fileType: "image/jpeg" as const,
-      initialQuality: 0.75,
+      initialQuality: legacyMobile ? 0.62 : 0.75,
     };
 
     try {
@@ -118,7 +129,70 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
     }
   };
 
-  // Upload via Edge Function using FormData (works reliably across Android/iOS/PC)
+  const fileToBase64 = (file: File): Promise<string> => {
+    return withTimeout(
+      new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = String(reader.result || "");
+          resolve(result.includes(",") ? result.split(",")[1] : result);
+        };
+        reader.onerror = () => reject(new Error("Could not read image. Please try another screenshot."));
+        reader.readAsDataURL(file);
+      }),
+      20000,
+      "Image reading"
+    );
+  };
+
+  const fetchWithTimeout = async (url: string, options: RequestInit, timeoutMs: number) => {
+    const controller = window.AbortController ? new AbortController() : null;
+    try {
+      return await withTimeout(
+        fetch(url, { ...options, ...(controller ? { signal: controller.signal } : {}) }),
+        timeoutMs,
+        "Upload"
+      );
+    } catch (error) {
+      controller?.abort();
+      throw error;
+    }
+  };
+
+  const uploadViaBase64 = async (file: File, token: string): Promise<string> => {
+    console.log("[UPLOAD] Using base64 mobile-safe upload");
+    setUploadProgress("Preparing mobile upload...");
+    const base64File = await fileToBase64(file);
+    setUploadProgress("Uploading image...");
+
+    const response = await fetchWithTimeout(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-payment-proof`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          file: base64File,
+          fileName: file.name || "proof.jpg",
+          fileType: getImageType(file),
+          amount,
+          bankReference: bankReference || "",
+        }),
+      },
+      120000
+    );
+
+    const result = await response.json();
+    if (!response.ok || !result.success) {
+      throw new Error(result.error || "Upload failed");
+    }
+
+    return result.url;
+  };
+
+  // Upload via Edge Function. Older mobiles use base64 JSON to avoid multipart hangs.
   const uploadViaEdgeFunction = async (file: File, retryCount = 0): Promise<string> => {
     console.log("[UPLOAD] Attempt:", retryCount + 1, "size:", (file.size / 1024).toFixed(2), "KB", "Android:", isAndroid());
 
@@ -127,12 +201,11 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
       throw new Error("Session expired. Please login again.");
     }
 
-    const timeoutMs = isAndroid() ? 120000 : 60000;
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => {
-      console.log("[UPLOAD] Aborting after", timeoutMs / 1000, "s");
-      controller.abort();
-    }, timeoutMs);
+    const token = sessionData.session.access_token;
+
+    if (isLegacyMobile()) {
+      return uploadViaBase64(file, token);
+    }
 
     try {
       const formData = new FormData();
@@ -140,17 +213,16 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
       formData.append("amount", amount);
       formData.append("bankReference", bankReference || "");
 
-      const response = await fetch(
+      const response = await fetchWithTimeout(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/upload-payment-proof`,
         {
           method: "POST",
-          headers: { Authorization: `Bearer ${sessionData.session.access_token}` },
+          headers: { Authorization: `Bearer ${token}` },
           body: formData,
-          signal: controller.signal,
-        }
+        },
+        isAndroid() ? 120000 : 60000
       );
 
-      clearTimeout(timeoutId);
       console.log("[UPLOAD] Status:", response.status);
 
       const result = await response.json();
@@ -160,7 +232,14 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
       console.log("[UPLOAD] Success");
       return result.url;
     } catch (err: any) {
-      clearTimeout(timeoutId);
+      console.warn("[UPLOAD] FormData failed, trying mobile-safe fallback:", err);
+
+      try {
+        return await uploadViaBase64(file, token);
+      } catch (fallbackError: any) {
+        console.error("[UPLOAD] Base64 fallback failed:", fallbackError);
+        err = fallbackError;
+      }
 
       if (retryCount < 2 && (err.name === "AbortError" || err.message?.includes("network") || err.message?.includes("fetch"))) {
         console.log("[UPLOAD] Retry after:", err.message);
