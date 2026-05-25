@@ -36,11 +36,13 @@ interface UserDepositRequestDialogProps {
 }
 
 const BANK_DETAILS = {
-  merchantName: "Mountain Dweller Traders",
-  accountNumber: "03006573733",
-  iban: "PK82JCMA0201923006573733",
-  tillNumber: "982222095",
-  bank: "JazzCash / Raast",
+  merchantName: "MOUNTAIN DWELLER",
+  accountNumber: "01171010850606",
+  iban: "PK20ALFH0117001010850606",
+  swiftCode: "ALFHPKKAXXX",
+  branchName: "KASUR BRANCH",
+  branchCode: "0117",
+  bank: "Bank Alfalah",
 };
 
 export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositRequestDialogProps) {
