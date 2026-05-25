@@ -147,24 +147,16 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
 
   const fetchWithTimeout = async (url: string, options: RequestInit, timeoutMs: number) => {
     const controller = window.AbortController ? new AbortController() : null;
-    const timeout = new Promise<Response>((_, reject) => {
-      const timeoutId = setTimeout(() => {
-        controller?.abort();
-        reject(new Error("Upload timed out"));
-      }, timeoutMs);
-
-      fetch(url, { ...options, signal: controller?.signal })
-        .then((response) => {
-          clearTimeout(timeoutId);
-          resolve(response);
-        })
-        .catch((error) => {
-          clearTimeout(timeoutId);
-          reject(error);
-        });
-    });
-
-    return timeout;
+    try {
+      return await withTimeout(
+        fetch(url, { ...options, ...(controller ? { signal: controller.signal } : {}) }),
+        timeoutMs,
+        "Upload"
+      );
+    } catch (error) {
+      controller?.abort();
+      throw error;
+    }
   };
 
   const uploadViaBase64 = async (file: File, token: string): Promise<string> => {
