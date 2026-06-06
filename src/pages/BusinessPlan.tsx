@@ -60,7 +60,7 @@ const BusinessPlan = () => {
                   <div className="flex-1">
                     <h3 className="font-display text-xl font-bold">{item.title}</h3>
                     <p className={`text-sm ${index === ranks.length - 1 ? "text-primary-foreground/80" : "text-muted-foreground"}`}>
-                      {item.members === 0 ? "Starting rank" : `${item.members} team members required`}
+                      {item.members} LC
                     </p>
                   </div>
                   {index === 0 ? <Users className="w-6 h-6 opacity-50" /> : index === ranks.length - 1 ? <Award className="w-6 h-6" /> : <TrendingUp className="w-6 h-6 opacity-50" />}
