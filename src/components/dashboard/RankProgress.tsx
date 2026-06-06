@@ -17,7 +17,7 @@ const RANKS = [
 ];
 
 export const RankProgress = ({ currentRank, teamCount }: RankProgressProps) => {
-  const currentRankIndex = RANKS.findIndex((r) => r.name === currentRank);
+  const currentRankIndex = Math.max(RANKS.findIndex((r) => r.name === currentRank), 0);
   const nextRank = RANKS[currentRankIndex + 1];
   
   const progressToNext = nextRank
