@@ -41,7 +41,7 @@ export const RankProgress = ({ currentRank, teamCount }: RankProgressProps) => {
       {/* Current Rank Highlight */}
       <div className="bg-gradient-hero rounded-xl p-4 mb-4 text-primary-foreground">
         <p className="text-sm opacity-80">Current Rank</p>
-        <p className="font-display text-2xl font-bold">{currentRank || "Member"}</p>
+        <p className="font-display text-2xl font-bold">{currentRank || "MD Starter"}</p>
         {nextRank && (
           <div className="mt-3">
             <div className="flex justify-between text-xs mb-1">
