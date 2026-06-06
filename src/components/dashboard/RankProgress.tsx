@@ -7,12 +7,13 @@ interface RankProgressProps {
 }
 
 const RANKS = [
-  { name: "Member", required: 0, bonus: 0 },
-  { name: "Supervisor", required: 10, bonus: 5000 },
-  { name: "Assistant Manager", required: 15, bonus: 10000 },
-  { name: "Manager", required: 20, bonus: 20000 },
-  { name: "Senior Manager", required: 30, bonus: 50000 },
-  { name: "Executive", required: 50, bonus: 100000 },
+  { name: "MD Starter", required: 1, bonus: "40% Direct" },
+  { name: "MD Explorer", required: 10, bonus: "41% Direct" },
+  { name: "MD Builder", required: 25, bonus: "45% Direct + 2% Passive" },
+  { name: "MD Leader", required: 50, bonus: "50% Direct + 4% Passive" },
+  { name: "MD Mentor", required: 100, bonus: "60% Direct + 5% Passive" },
+  { name: "MD Director", required: 250, bonus: "Elite tier" },
+  { name: "MD Ambassador", required: 500, bonus: "Top tier" },
 ];
 
 export const RankProgress = ({ currentRank, teamCount }: RankProgressProps) => {
