@@ -88,7 +88,7 @@ export const RankProgress = ({ currentRank, teamCount }: RankProgressProps) => {
                   {rank.name}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  Bonus: {rank.bonus.toLocaleString()} PKR
+                  {rank.required} members · {rank.bonus}
                 </p>
               </div>
               {isPast && <CheckCircle className="w-5 h-5 text-primary" />}
