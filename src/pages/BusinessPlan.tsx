@@ -81,8 +81,8 @@ const BusinessPlan = () => {
 
           <div className="grid md:grid-cols-2 gap-6 max-w-4xl mx-auto mb-12">
             {[
-              { icon: Zap, title: "Direct Bonus", desc: "Earn on every sale you make directly. Higher ranks, higher bonuses.", value: "Up to 55%", grad: "from-primary to-primary-glow" },
-              { icon: TrendingUp, title: "Passive Income", desc: "Build a team and earn from their sales. True residual income.", value: "Up to 5%", grad: "from-accent to-primary-glow" },
+              { icon: Zap, title: "Direct Bonus", desc: "Earn a % on every direct sale or package purchase made by people you personally refer (Level 1).", value: "Up to 60%", grad: "from-primary to-primary-glow" },
+              { icon: TrendingUp, title: "Passive Income", desc: "Once you reach MD Builder, earn a % on the sales of your indirect team (Level 2 and below) — true residual income.", value: "Up to 5%", grad: "from-accent to-primary-glow" },
             ].map((c, i) => (
               <FadeIn key={c.title} delay={i * 0.15}>
                 <Tilt3D>
