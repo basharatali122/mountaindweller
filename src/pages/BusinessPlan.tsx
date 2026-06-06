@@ -5,17 +5,21 @@ import { Mountain, ArrowRight, TrendingUp, Users, Award, Zap } from "lucide-reac
 import { FadeIn, Stagger, StaggerItem, AuroraBackground, Tilt3D } from "@/components/anim/Primitives";
 
 const ranks = [
-  { rank: "Rank 1", members: 0, title: "Member" },
-  { rank: "Supervisor", members: 10, title: "Supervisor" },
-  { rank: "Assistant Manager", members: 15, title: "Assistant Manager" },
-  { rank: "Manager", members: 20, title: "Manager" },
-  { rank: "Senior Manager", members: 30, title: "Senior Manager" },
+  { rank: "Level 1", members: 1, title: "MD Starter" },
+  { rank: "Level 2", members: 10, title: "MD Explorer" },
+  { rank: "Level 3", members: 25, title: "MD Builder" },
+  { rank: "Level 4", members: 50, title: "MD Leader" },
+  { rank: "Level 5", members: 100, title: "MD Mentor" },
+  { rank: "Level 6", members: 250, title: "MD Director" },
+  { rank: "Level 7", members: 500, title: "MD Ambassador" },
 ];
 
 const earnings = [
-  { rank: "Assistant Manager", directBonus: "45%", passiveIncome: "2%" },
-  { rank: "Manager", directBonus: "50%", passiveIncome: "4%" },
-  { rank: "Senior Manager", directBonus: "55%", passiveIncome: "5%" },
+  { rank: "MD Starter (Lvl 1)", directBonus: "40%", passiveIncome: "—" },
+  { rank: "MD Explorer (Lvl 2)", directBonus: "41%", passiveIncome: "—" },
+  { rank: "MD Builder (Lvl 3)", directBonus: "45%", passiveIncome: "2%" },
+  { rank: "MD Leader (Lvl 4)", directBonus: "50%", passiveIncome: "4%" },
+  { rank: "MD Mentor (Lvl 5)", directBonus: "60%", passiveIncome: "5%" },
 ];
 
 const BusinessPlan = () => {
