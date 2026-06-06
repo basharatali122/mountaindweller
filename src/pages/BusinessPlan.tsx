@@ -60,7 +60,7 @@ const BusinessPlan = () => {
                   <div className="flex-1">
                     <h3 className="font-display text-xl font-bold">{item.title}</h3>
                     <p className={`text-sm ${index === ranks.length - 1 ? "text-primary-foreground/80" : "text-muted-foreground"}`}>
-                      {item.members === 0 ? "Starting rank" : `${item.members} team members required`}
+                      {item.members} LC
                     </p>
                   </div>
                   {index === 0 ? <Users className="w-6 h-6 opacity-50" /> : index === ranks.length - 1 ? <Award className="w-6 h-6" /> : <TrendingUp className="w-6 h-6 opacity-50" />}
@@ -81,8 +81,8 @@ const BusinessPlan = () => {
 
           <div className="grid md:grid-cols-2 gap-6 max-w-4xl mx-auto mb-12">
             {[
-              { icon: Zap, title: "Direct Bonus", desc: "Earn on every sale you make directly. Higher ranks, higher bonuses.", value: "Up to 55%", grad: "from-primary to-primary-glow" },
-              { icon: TrendingUp, title: "Passive Income", desc: "Build a team and earn from their sales. True residual income.", value: "Up to 5%", grad: "from-accent to-primary-glow" },
+              { icon: Zap, title: "Direct Bonus", desc: "Earn a % on every direct sale or package purchase made by people you personally refer (Level 1).", value: "Up to 60%", grad: "from-primary to-primary-glow" },
+              { icon: TrendingUp, title: "Passive Income", desc: "Once you reach MD Builder, earn a % on the sales of your indirect team (Level 2 and below) — true residual income.", value: "Up to 5%", grad: "from-accent to-primary-glow" },
             ].map((c, i) => (
               <FadeIn key={c.title} delay={i * 0.15}>
                 <Tilt3D>
@@ -119,6 +119,54 @@ const BusinessPlan = () => {
                   ))}
                 </tbody>
               </table>
+            </div>
+          </FadeIn>
+
+          <FadeIn className="max-w-4xl mx-auto mt-12">
+            <div className="bg-card rounded-3xl border border-border p-8 md:p-10 shadow-elegant">
+              <h3 className="font-display text-2xl md:text-3xl font-bold mb-2">How bonuses are distributed</h3>
+              <p className="text-muted-foreground mb-6">Every purchase made by your team triggers an automatic, instant payout split across up to 3 levels of your network.</p>
+
+              <div className="grid md:grid-cols-3 gap-4 mb-8">
+                <div className="rounded-2xl border border-border p-5 bg-secondary/30">
+                  <div className="text-xs font-semibold text-primary uppercase tracking-wider mb-2">Level 1 — Direct</div>
+                  <p className="font-display text-3xl font-bold mb-1">40 – 60%</p>
+                  <p className="text-sm text-muted-foreground">From people you personally referred. Your % grows as your rank grows.</p>
+                </div>
+                <div className="rounded-2xl border border-border p-5 bg-secondary/30">
+                  <div className="text-xs font-semibold text-accent uppercase tracking-wider mb-2">Level 2 — Indirect</div>
+                  <p className="font-display text-3xl font-bold mb-1">2 – 5%</p>
+                  <p className="text-sm text-muted-foreground">From your team's referrals. Unlocked at MD Builder and above.</p>
+                </div>
+                <div className="rounded-2xl border border-border p-5 bg-secondary/30">
+                  <div className="text-xs font-semibold text-gold uppercase tracking-wider mb-2">Level 3 — Network</div>
+                  <p className="font-display text-3xl font-bold mb-1">Fixed</p>
+                  <p className="text-sm text-muted-foreground">A small fixed bonus on deeper network purchases as configured per package.</p>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <h4 className="font-display text-lg font-bold mb-2">1. Package purchases</h4>
+                  <p className="text-sm text-muted-foreground">When a referred member buys a package, the configured Level 1 / Level 2 / Level 3 bonuses are credited to the upline wallets instantly.</p>
+                </div>
+                <div>
+                  <h4 className="font-display text-lg font-bold mb-2">2. Direct investments</h4>
+                  <p className="text-sm text-muted-foreground">When a referred member makes a direct investment, the Level 1 referrer earns <span className="font-semibold text-primary">10%</span> and the Level 2 referrer earns <span className="font-semibold text-accent">5%</span> of the invested amount.</p>
+                </div>
+                <div>
+                  <h4 className="font-display text-lg font-bold mb-2">3. Product orders</h4>
+                  <p className="text-sm text-muted-foreground">Every product order placed by a referred member generates a flat <span className="font-semibold text-primary">500 PKR</span> bonus for the direct referrer.</p>
+                </div>
+                <div>
+                  <h4 className="font-display text-lg font-bold mb-2">4. Rank-based multipliers</h4>
+                  <p className="text-sm text-muted-foreground">Your current rank (MD Starter → MD Ambassador) determines your Direct Bonus % and unlocks passive income from deeper levels. The higher your LC count, the higher your earning rate on every transaction below you.</p>
+                </div>
+              </div>
+
+              <div className="mt-6 rounded-xl bg-primary/10 border border-primary/20 p-4 text-sm">
+                <span className="font-semibold text-primary">Instant & Transparent:</span> <span className="text-foreground">All bonuses are credited automatically to your wallet the moment the transaction is approved — no manual claims, no waiting.</span>
+              </div>
             </div>
           </FadeIn>
         </div>
