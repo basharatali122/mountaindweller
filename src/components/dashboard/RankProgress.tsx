@@ -7,16 +7,17 @@ interface RankProgressProps {
 }
 
 const RANKS = [
-  { name: "Member", required: 0, bonus: 0 },
-  { name: "Supervisor", required: 10, bonus: 5000 },
-  { name: "Assistant Manager", required: 15, bonus: 10000 },
-  { name: "Manager", required: 20, bonus: 20000 },
-  { name: "Senior Manager", required: 30, bonus: 50000 },
-  { name: "Executive", required: 50, bonus: 100000 },
+  { name: "MD Starter", required: 1, bonus: "40% Direct" },
+  { name: "MD Explorer", required: 10, bonus: "41% Direct" },
+  { name: "MD Builder", required: 25, bonus: "45% Direct + 2% Passive" },
+  { name: "MD Leader", required: 50, bonus: "50% Direct + 4% Passive" },
+  { name: "MD Mentor", required: 100, bonus: "60% Direct + 5% Passive" },
+  { name: "MD Director", required: 250, bonus: "Elite tier" },
+  { name: "MD Ambassador", required: 500, bonus: "Top tier" },
 ];
 
 export const RankProgress = ({ currentRank, teamCount }: RankProgressProps) => {
-  const currentRankIndex = RANKS.findIndex((r) => r.name === currentRank);
+  const currentRankIndex = Math.max(RANKS.findIndex((r) => r.name === currentRank), 0);
   const nextRank = RANKS[currentRankIndex + 1];
   
   const progressToNext = nextRank
@@ -40,7 +41,7 @@ export const RankProgress = ({ currentRank, teamCount }: RankProgressProps) => {
       {/* Current Rank Highlight */}
       <div className="bg-gradient-hero rounded-xl p-4 mb-4 text-primary-foreground">
         <p className="text-sm opacity-80">Current Rank</p>
-        <p className="font-display text-2xl font-bold">{currentRank || "Member"}</p>
+        <p className="font-display text-2xl font-bold">{currentRank || "MD Starter"}</p>
         {nextRank && (
           <div className="mt-3">
             <div className="flex justify-between text-xs mb-1">
@@ -87,7 +88,7 @@ export const RankProgress = ({ currentRank, teamCount }: RankProgressProps) => {
                   {rank.name}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  Bonus: {rank.bonus.toLocaleString()} PKR
+                  {rank.required} members · {rank.bonus}
                 </p>
               </div>
               {isPast && <CheckCircle className="w-5 h-5 text-primary" />}
