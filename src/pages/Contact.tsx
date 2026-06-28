@@ -9,6 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Mail, Phone, MapPin, Send, Mountain, CheckCircle, Instagram, Facebook, Youtube } from "lucide-react";
 import { FadeIn, AuroraBackground, Tilt3D } from "@/components/anim/Primitives";
 import { z } from "zod";
+import { supabase } from "@/integrations/supabase/client";
 
 const contactSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters").max(100),
