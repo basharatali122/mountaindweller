@@ -14,6 +14,42 @@ export type Database = {
   }
   public: {
     Tables: {
+      contact_messages: {
+        Row: {
+          city: string
+          created_at: string
+          email: string
+          id: string
+          interest: string
+          is_read: boolean
+          message: string | null
+          name: string
+          phone: string
+        }
+        Insert: {
+          city: string
+          created_at?: string
+          email: string
+          id?: string
+          interest: string
+          is_read?: boolean
+          message?: string | null
+          name: string
+          phone: string
+        }
+        Update: {
+          city?: string
+          created_at?: string
+          email?: string
+          id?: string
+          interest?: string
+          is_read?: boolean
+          message?: string | null
+          name?: string
+          phone?: string
+        }
+        Relationships: []
+      }
       deposit_requests: {
         Row: {
           admin_notes: string | null

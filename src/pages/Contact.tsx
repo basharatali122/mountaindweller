@@ -9,6 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Mail, Phone, MapPin, Send, Mountain, CheckCircle, Instagram, Facebook, Youtube } from "lucide-react";
 import { FadeIn, AuroraBackground, Tilt3D } from "@/components/anim/Primitives";
 import { z } from "zod";
+import { supabase } from "@/integrations/supabase/client";
 
 const contactSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters").max(100),
@@ -31,9 +32,17 @@ const Contact = () => {
     e.preventDefault();
     setErrors({});
     try {
-      contactSchema.parse(formData);
+      const validated = contactSchema.parse(formData);
       setIsSubmitting(true);
-      await new Promise((r) => setTimeout(r, 1500));
+      const { error } = await supabase.from("contact_messages").insert({
+        name: validated.name,
+        phone: validated.phone,
+        email: validated.email,
+        city: validated.city,
+        interest: validated.interest,
+        message: validated.message || null,
+      });
+      if (error) throw error;
       setIsSubmitted(true);
       toast({ title: "Message Sent!", description: "We'll get back to you within 24 hours." });
     } catch (error) {
@@ -41,6 +50,8 @@ const Contact = () => {
         const fe: Record<string, string> = {};
         error.errors.forEach((err) => { if (err.path[0]) fe[err.path[0].toString()] = err.message; });
         setErrors(fe);
+      } else {
+        toast({ title: "Failed to send", description: "Please try again in a moment.", variant: "destructive" });
       }
     } finally { setIsSubmitting(false); }
   };

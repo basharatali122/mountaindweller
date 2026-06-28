@@ -11,8 +11,11 @@ import {
   LogOut,
   ArrowDownToLine,
   ClipboardList,
-  Banknote
+  Banknote,
+  Mail
 } from "lucide-react";
+
+
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
@@ -28,6 +31,7 @@ const menuItems = [
   { title: "Investments", url: "/admin/investments", icon: Banknote },
   { title: "Withdrawals", url: "/admin/withdrawals", icon: Wallet },
   { title: "Referrals", url: "/admin/referrals", icon: Link2 },
+  { title: "Messages", url: "/admin/messages", icon: Mail },
 ];
 
 interface AdminSidebarProps {
