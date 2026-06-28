@@ -25,6 +25,7 @@ const AdminWithdrawals = lazy(() => import("./pages/admin/AdminWithdrawals"));
 const AdminReferrals = lazy(() => import("./pages/admin/AdminReferrals"));
 const AdminDeposits = lazy(() => import("./pages/admin/AdminDeposits"));
 const AdminInvestments = lazy(() => import("./pages/admin/AdminInvestments"));
+const AdminMessages = lazy(() => import("./pages/admin/AdminMessages"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 // Optimized QueryClient with caching
