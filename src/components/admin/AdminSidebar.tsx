@@ -11,8 +11,9 @@ import {
   LogOut,
   ArrowDownToLine,
   ClipboardList,
-  Banknote
-} from "lucide-react";
+  Banknote,
+  Mail
+
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
