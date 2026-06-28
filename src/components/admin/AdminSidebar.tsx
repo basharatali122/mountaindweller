@@ -31,6 +31,7 @@ const menuItems = [
   { title: "Investments", url: "/admin/investments", icon: Banknote },
   { title: "Withdrawals", url: "/admin/withdrawals", icon: Wallet },
   { title: "Referrals", url: "/admin/referrals", icon: Link2 },
+  { title: "Messages", url: "/admin/messages", icon: Mail },
 ];
 
 interface AdminSidebarProps {
