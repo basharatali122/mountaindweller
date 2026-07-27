@@ -13,6 +13,7 @@ import { ReferralEarnings } from "@/components/dashboard/ReferralEarnings";
 import { UserDepositRequestDialog } from "@/components/dashboard/UserDepositRequestDialog";
 import { DepositHistory } from "@/components/dashboard/DepositHistory";
 import { DirectInvestmentDialog } from "@/components/dashboard/DirectInvestmentDialog";
+import { SafepayCheckoutDialog } from "@/components/dashboard/SafepayCheckoutDialog";
 import { 
   Wallet, 
   Users, 
