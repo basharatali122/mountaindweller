@@ -412,6 +412,45 @@ export type Database = {
           },
         ]
       }
+      safepay_transactions: {
+        Row: {
+          amount: number
+          created_at: string
+          credited: boolean
+          id: string
+          order_id: string
+          raw: Json | null
+          status: string
+          tracker: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          credited?: boolean
+          id?: string
+          order_id: string
+          raw?: Json | null
+          status?: string
+          tracker: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          credited?: boolean
+          id?: string
+          order_id?: string
+          raw?: Json | null
+          status?: string
+          tracker?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       transactions: {
         Row: {
           amount: number
@@ -539,6 +578,10 @@ export type Database = {
     Functions: {
       admin_direct_deposit: {
         Args: { p_amount: number; p_description?: string; p_user_id: string }
+        Returns: Json
+      }
+      credit_safepay_payment: {
+        Args: { p_raw?: Json; p_status: string; p_tracker: string }
         Returns: Json
       }
       has_role: {
