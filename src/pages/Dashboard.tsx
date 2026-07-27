@@ -13,6 +13,7 @@ import { ReferralEarnings } from "@/components/dashboard/ReferralEarnings";
 import { UserDepositRequestDialog } from "@/components/dashboard/UserDepositRequestDialog";
 import { DepositHistory } from "@/components/dashboard/DepositHistory";
 import { DirectInvestmentDialog } from "@/components/dashboard/DirectInvestmentDialog";
+import { SafepayCheckoutDialog } from "@/components/dashboard/SafepayCheckoutDialog";
 import { 
   Wallet, 
   Users, 
@@ -338,6 +339,7 @@ const Dashboard = () => {
                     userId={user?.id || ""}
                     onSuccess={fetchData}
                   />
+                  <SafepayCheckoutDialog userId={user?.id || ""} />
                   <Link to="/packages">
                     <Button variant="outline" className="w-full h-auto flex-col py-4 gap-2">
                       <ArrowUpRight className="w-5 h-5" />

@@ -26,6 +26,7 @@ const AdminReferrals = lazy(() => import("./pages/admin/AdminReferrals"));
 const AdminDeposits = lazy(() => import("./pages/admin/AdminDeposits"));
 const AdminInvestments = lazy(() => import("./pages/admin/AdminInvestments"));
 const AdminMessages = lazy(() => import("./pages/admin/AdminMessages"));
+const SafepayReturn = lazy(() => import("./pages/SafepayReturn"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 // Optimized QueryClient with caching
@@ -64,6 +65,8 @@ const App = () => (
               <Route path="/contact" element={<Contact />} />
               <Route path="/auth" element={<Auth />} />
               <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/safepay/return" element={<SafepayReturn />} />
+              
               
               {/* Admin Routes */}
               <Route path="/admin" element={<AdminOverview />} />
