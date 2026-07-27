@@ -65,6 +65,8 @@ const App = () => (
               <Route path="/contact" element={<Contact />} />
               <Route path="/auth" element={<Auth />} />
               <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/safepay/return" element={<SafepayReturn />} />
+              
               
               {/* Admin Routes */}
               <Route path="/admin" element={<AdminOverview />} />
