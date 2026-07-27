@@ -339,6 +339,7 @@ const Dashboard = () => {
                     userId={user?.id || ""}
                     onSuccess={fetchData}
                   />
+                  <SafepayCheckoutDialog userId={user?.id || ""} />
                   <Link to="/packages">
                     <Button variant="outline" className="w-full h-auto flex-col py-4 gap-2">
                       <ArrowUpRight className="w-5 h-5" />
