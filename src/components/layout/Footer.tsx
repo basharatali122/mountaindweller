@@ -54,11 +54,18 @@ export function Footer() {
           </div>
 
           <div>
-            <h4 className="font-display text-sm uppercase tracking-wider mb-5 text-mountain-foreground/60">Products</h4>
+            <h4 className="font-display text-sm uppercase tracking-wider mb-5 text-mountain-foreground/60">Legal</h4>
             <ul className="space-y-3">
-              {["MD Shampoo", "Sun Block SPF50", "Face Wash", "Serum Vitamin C", "Cream Nevolis"].map((p) => (
-                <li key={p}>
-                  <Link to="/products" className="text-mountain-foreground/70 hover:text-primary-glow transition-colors text-sm">{p}</Link>
+              {[
+                { href: "/privacy-policy", label: "Privacy Policy" },
+                { href: "/terms-and-conditions", label: "Terms and Conditions" },
+                { href: "/refund-policy", label: "Cancellation & Refund Policy" },
+                { href: "/ownership", label: "Ownership Statement" },
+              ].map((link) => (
+                <li key={link.href}>
+                  <Link to={link.href} className="text-mountain-foreground/70 hover:text-primary-glow transition-colors text-sm story-link">
+                    {link.label}
+                  </Link>
                 </li>
               ))}
             </ul>
