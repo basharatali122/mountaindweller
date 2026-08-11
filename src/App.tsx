@@ -27,6 +27,10 @@ const AdminDeposits = lazy(() => import("./pages/admin/AdminDeposits"));
 const AdminInvestments = lazy(() => import("./pages/admin/AdminInvestments"));
 const AdminMessages = lazy(() => import("./pages/admin/AdminMessages"));
 const SafepayReturn = lazy(() => import("./pages/SafepayReturn"));
+const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
+const Terms = lazy(() => import("./pages/Terms"));
+const RefundPolicy = lazy(() => import("./pages/RefundPolicy"));
+const Ownership = lazy(() => import("./pages/Ownership"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 // Optimized QueryClient with caching
@@ -66,6 +70,12 @@ const App = () => (
               <Route path="/auth" element={<Auth />} />
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/safepay/return" element={<SafepayReturn />} />
+
+              {/* Legal pages */}
+              <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+              <Route path="/terms-and-conditions" element={<Terms />} />
+              <Route path="/refund-policy" element={<RefundPolicy />} />
+              <Route path="/ownership" element={<Ownership />} />
               
               
               {/* Admin Routes */}

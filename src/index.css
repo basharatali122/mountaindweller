@@ -147,6 +147,14 @@
 }
 
 @layer utilities {
+  .policy-prose { @apply text-muted-foreground leading-relaxed; }
+  .policy-prose h2 { @apply text-foreground font-display text-xl md:text-2xl font-bold mt-10 mb-4 first:mt-0; }
+  .policy-prose h3 { @apply text-foreground font-display text-lg font-semibold mt-8 mb-3; }
+  .policy-prose p { @apply mb-4; }
+  .policy-prose ul { @apply list-disc pl-6 space-y-2 mb-5; }
+  .policy-prose strong { @apply text-foreground font-semibold; }
+  .policy-prose a { @apply text-primary underline underline-offset-4 hover:opacity-80 break-words; }
+
   .text-gradient {
     @apply bg-clip-text text-transparent;
     background-image: var(--gradient-primary);
