@@ -53,10 +53,13 @@ export function Navbar() {
     >
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between h-16 md:h-20">
-          <Link to="/" className="flex items-center gap-2 group">
-            <div className="relative">
-              <div className="absolute inset-0 bg-primary/40 blur-xl group-hover:bg-primary/60 transition-all rounded-full" />
-              <img src={logo} alt="Mountain Dweller" className="relative h-10 w-10 md:h-12 md:w-12 rounded-full object-cover ring-2 ring-border" />
+          <Link to="/" className="flex items-center gap-2.5 group">
+            <div className="relative h-10 w-10 md:h-12 md:w-12 rounded-2xl overflow-hidden bg-gradient-primary shadow-glow ring-2 ring-border">
+              <img
+                src={logo}
+                alt="Mountain Dweller"
+                className="h-full w-full object-cover mix-blend-screen brightness-110 contrast-110"
+              />
             </div>
             <span className="hidden sm:block font-display text-lg font-bold tracking-tight">
               Mountain<span className="text-gradient">Dweller</span>
