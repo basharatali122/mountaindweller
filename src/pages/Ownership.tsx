@@ -96,8 +96,8 @@ const Ownership = () => (
         <h2>Content ownership</h2>
         <p>
           All text, graphics, product photographs and business material on this website are the
-          property of Mountain Dweller Traders unless otherwise credited, and may not be reproduced
-          without written permission.
+          property of MOUNTAINDWELLER (PRIVATE) LIMITED unless otherwise credited, and may not be
+          reproduced without written permission.
         </p>
       </FadeIn>
     </PolicyPage>
