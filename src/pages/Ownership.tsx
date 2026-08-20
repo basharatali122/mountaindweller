@@ -87,7 +87,7 @@ const Ownership = () => (
 
         <h2>Payments</h2>
         <p>
-          All payments made on this website are collected by Mountain Dweller Traders. Card and wallet
+          All payments made on this website are collected by MOUNTAINDWELLER (PRIVATE) LIMITED. Card and wallet
           payments are handled by our authorised payment gateway partner, and bank transfers are
           received in the business bank account named above. Charges on your statement will appear in
           the name of Mountain Dweller.
