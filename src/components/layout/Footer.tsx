@@ -81,12 +81,28 @@ export function Footer() {
           </div>
         </div>
 
-        <div className="border-t border-white/10 mt-16 pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
-          <p className="text-mountain-foreground/50 text-sm flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-primary-glow" />
-            © 2025 Mountain Dweller. Crafted with care.
+        <div className="border-t border-white/10 mt-16 pt-8 space-y-4">
+          <p className="text-mountain-foreground/60 text-xs leading-relaxed max-w-3xl">
+            MOUNTAINDWELLER (PRIVATE) LIMITED — a private limited company registered with the
+            Securities and Exchange Commission of Pakistan (SECP). Incorporation / UIN:{" "}
+            <strong>0346050</strong> · FBR NTN: <strong>J466026</strong> · Incorporated 17 July 2026 ·
+            House No. 25, Street 11, Noor Shah Wali Road, Kasur, Punjab, Pakistan.{" "}
+            <a
+              href="https://leap.secp.gov.pk/#/verify-company-info/0346050"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary-glow hover:underline"
+            >
+              Verify registration
+            </a>
           </p>
-          <p className="text-mountain-foreground/50 text-sm">mountaindweller.online</p>
+          <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+            <p className="text-mountain-foreground/50 text-sm flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-primary-glow" />
+              © 2026 MOUNTAINDWELLER (PRIVATE) LIMITED. All rights reserved.
+            </p>
+            <p className="text-mountain-foreground/50 text-sm">mountaindweller.online</p>
+          </div>
         </div>
       </div>
     </footer>
