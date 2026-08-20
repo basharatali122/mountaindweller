@@ -12,9 +12,10 @@ const Terms = () => (
       <FadeIn>
         <h2>1. Agreement</h2>
         <p>
-          These Terms and Conditions govern your use of mountaindweller.online, operated by Mountain
-          Dweller Traders, Kasur, Pakistan. By registering an account, placing an order or making a
-          payment you accept these terms.
+          These Terms and Conditions govern your use of mountaindweller.online, operated by
+          MOUNTAINDWELLER (PRIVATE) LIMITED (SECP Incorporation No. 0346050, NTN J466026), Kasur,
+          Pakistan. By registering an account, placing an order or making a payment you accept these
+          terms.
         </p>
 
         <h2>2. Eligibility &amp; account</h2>

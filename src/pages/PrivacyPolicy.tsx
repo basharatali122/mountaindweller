@@ -6,13 +6,13 @@ const PrivacyPolicy = () => (
   <Layout>
     <PolicyPage
       title="Privacy Policy"
-      subtitle="How Mountain Dweller Traders collects, uses and protects your information."
+      subtitle="How MOUNTAINDWELLER (PRIVATE) LIMITED collects, uses and protects your information."
       updated="Last updated: 11 August 2026"
     >
       <FadeIn>
         <h2>1. Introduction</h2>
         <p>
-          This Privacy Policy explains how Mountain Dweller Traders ("Mountain Dweller", "we", "us")
+          This Privacy Policy explains how MOUNTAINDWELLER (PRIVATE) LIMITED ("Mountain Dweller", "we", "us")
           collects, uses, stores and protects information when you use our website
           (mountaindweller.online) and our services. By using the website you agree to this policy.
         </p>
@@ -77,7 +77,7 @@ const PrivacyPolicy = () => (
 
         <h2>10. Contact us</h2>
         <p>
-          Mountain Dweller Traders, Kasur, Punjab, Pakistan<br />
+          MOUNTAINDWELLER (PRIVATE) LIMITED, Kasur, Punjab, Pakistan<br />
           Email: <a href="mailto:officialmountaidweller@gmail.com">officialmountaidweller@gmail.com</a><br />
           Phone: <a href="tel:03304260609">0330-4260609</a>
         </p>
