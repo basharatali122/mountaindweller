@@ -361,7 +361,7 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
             <h3 className="font-semibold text-foreground text-center">Scan QR to Pay</h3>
             <div className="flex justify-center">
               <img
-                src={paymentQrCode}
+                src={paymentQrCode.url}
                 alt="UBL QR Code"
                 className="w-48 h-auto rounded-lg border-2 border-amber-200 bg-white"
               />
