@@ -15,7 +15,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Wallet, Copy, CheckCircle, X, Image as ImageIcon, Upload } from "lucide-react";
 import imageCompression from "browser-image-compression";
-import paymentQrCode from "@/assets/payment-qr.jpeg";
+import paymentQrCode from "@/assets/payment-qr.png.asset.json";
 
 // Detect mobile/legacy browsers where multipart uploads can hang
 const isAndroid = () => /android/i.test(navigator.userAgent);
@@ -37,12 +37,9 @@ interface UserDepositRequestDialogProps {
 
 const BANK_DETAILS = {
   merchantName: "MOUNTAIN DWELLER",
-  accountNumber: "01171010850606",
-  iban: "PK20ALFH0117001010850606",
-  swiftCode: "ALFHPKKAXXX",
-  branchName: "KASUR BRANCH",
-  branchCode: "0117",
-  bank: "Bank Alfalah",
+  accountNumber: "2229395039072",
+  iban: "PK29UNIL0109000395039072",
+  bank: "UBL (United Bank Limited)",
 };
 
 export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositRequestDialogProps) {
@@ -365,7 +362,7 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
             <div className="flex justify-center">
               <img
                 src={paymentQrCode}
-                alt="Bank Alfalah QR Code"
+                alt="UBL QR Code"
                 className="w-48 h-auto rounded-lg border-2 border-amber-200 bg-white"
               />
             </div>
@@ -435,32 +432,6 @@ export function UserDepositRequestDialog({ userId, onSuccess }: UserDepositReque
                     )}
                   </Button>
                 </div>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-muted-foreground">Swift Code:</span>
-                <div className="flex items-center gap-2">
-                  <span className="font-mono font-medium">{BANK_DETAILS.swiftCode}</span>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-6 w-6"
-                    onClick={() => copyToClipboard(BANK_DETAILS.swiftCode, "swift")}
-                  >
-                    {copiedField === "swift" ? (
-                      <CheckCircle className="h-3 w-3 text-green-500" />
-                    ) : (
-                      <Copy className="h-3 w-3" />
-                    )}
-                  </Button>
-                </div>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-muted-foreground">Branch Name:</span>
-                <span className="font-medium text-xs">{BANK_DETAILS.branchName}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-muted-foreground">Branch Code:</span>
-                <span className="font-mono font-medium">{BANK_DETAILS.branchCode}</span>
               </div>
             </div>
           </div>
