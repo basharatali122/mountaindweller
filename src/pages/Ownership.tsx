@@ -74,7 +74,7 @@ const Ownership = () => (
           <li><strong>Trading name:</strong> Mountain Dweller</li>
           <li><strong>Nature of business:</strong> Retail and direct sales of skincare and personal-care products</li>
           <li><strong>Registered address:</strong> House No. 25, Street 11, Noor Shah Wali Road, Kasur, Punjab, Pakistan</li>
-          <li><strong>Bank account title:</strong> MOUNTAIN DWELLER (Bank Alfalah, Kasur Branch)</li>
+          <li><strong>Bank account title:</strong> MOUNTAIN DWELLER (UBL United Bank Limited)</li>
         </ul>
 
 
